@@ -1,0 +1,93 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Deric MT5 Trade Trigger</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Deric MT5 Trade Trigger</h1>
+      <div class="toggle-container">
+        <label class="switch">
+          <input type="checkbox" id="enableToggle">
+          <span class="slider round"></span>
+        </label>
+        <span id="statusText">Disabled</span>
+      </div>
+    </header>
+    
+    <div class="strategy-info">
+      <h2>Strategy: Crossover with 200 EMA Filter</h2>
+      <p>
+        This strategy uses SMA crossovers with multiple filters to identify potential trade entries.
+      </p>
+    </div>
+    
+    <div class="settings-section">
+      <h2>Settings</h2>
+      <form id="settingsForm">
+        <div class="settings-group">
+          <h3>Moving Averages</h3>
+          <div class="form-group">
+            <label for="shortMAPeriod">Short MA Period:</label>
+            <input type="number" id="shortMAPeriod" min="1" max="200">
+          </div>
+          <div class="form-group">
+            <label for="longMAPeriod">Long MA Period:</label>
+            <input type="number" id="longMAPeriod" min="1" max="500">
+          </div>
+          <div class="form-group">
+            <label for="emaPeriod">EMA Period:</label>
+            <input type="number" id="emaPeriod" min="1" max="500">
+          </div>
+        </div>
+        
+        <div class="settings-group">
+          <h3>Risk Management</h3>
+          <div class="form-group">
+            <label for="accountSize">Account Size (USD):</label>
+            <input type="number" id="accountSize" min="1">
+          </div>
+          <div class="form-group">
+            <label for="riskPerTrade">Risk per Trade (USD):</label>
+            <input type="number" id="riskPerTrade" min="1">
+          </div>
+          <div class="form-group">
+            <label for="lotSizePerTrade">Lot Size per Trade:</label>
+            <input type="number" id="lotSizePerTrade" min="0.01" step="0.01">
+          </div>
+        </div>
+        
+        <div class="settings-group">
+          <h3>Other Parameters</h3>
+          <div class="form-group">
+            <label for="atrLength">ATR Length:</label>
+            <input type="number" id="atrLength" min="1" max="100">
+          </div>
+          <div class="form-group">
+            <label for="cooldownPeriod">Cooldown Period (bars):</label>
+            <input type="number" id="cooldownPeriod" min="0" max="100">
+          </div>
+        </div>
+        
+        <button type="submit" id="saveSettings">Save Settings</button>
+      </form>
+    </div>
+    
+    <div class="signals-section">
+      <h2>Recent Signals</h2>
+      <div id="signalsContainer">
+        <p class="no-signals">No signals generated yet.</p>
+      </div>
+    </div>
+    
+    <footer>
+      <p>© 2025 Deric MT5 Trade Trigger</p>
+    </footer>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>
