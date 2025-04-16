@@ -2,6 +2,7 @@
 // Background script for the extension
 let isEnabled = false;
 let isConnectedToMT5 = false;
+let serverUrl = "http://localhost:5555";
 
 // Listen for messages from the popup or content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
@@ -59,28 +60,50 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-// Check MT5 connection status periodically in active tabs
+// Check MT5 connection status periodically
 function checkConnectionStatus() {
-  chrome.tabs.query({ active: true }, (tabs) => {
-    tabs.forEach((tab) => {
-      chrome.tabs.sendMessage(tab.id, { action: "checkConnection" }, (response) => {
-        // Only update if we got a response
-        if (response && typeof response.isConnected !== 'undefined') {
-          isConnectedToMT5 = response.isConnected;
-          
-          // Update badge
-          if (isConnectedToMT5) {
-            chrome.action.setBadgeText({ text: "MT5" });
-            chrome.action.setBadgeBackgroundColor({ color: "#4CAF50" });
-            chrome.action.setTitle({ title: "Connected to MT5" });
-          } else {
-            chrome.action.setBadgeText({ text: "" });
-            chrome.action.setTitle({ title: "MT5 Trade Trigger" });
-          }
-        }
+  fetch(`${serverUrl}/status`)
+    .then(response => response.json())
+    .then(data => {
+      isConnectedToMT5 = data.connected;
+      
+      // Update badge
+      if (isConnectedToMT5) {
+        chrome.action.setBadgeText({ text: "MT5" });
+        chrome.action.setBadgeBackgroundColor({ color: "#4CAF50" });
+        chrome.action.setTitle({ title: "Connected to MT5" });
+      } else {
+        chrome.action.setBadgeText({ text: "" });
+        chrome.action.setTitle({ title: "MT5 Trade Trigger" });
+      }
+      
+      // Broadcast to all tabs
+      chrome.tabs.query({}, (tabs) => {
+        tabs.forEach((tab) => {
+          chrome.tabs.sendMessage(tab.id, { 
+            action: "connectionStatusChanged", 
+            isConnected: isConnectedToMT5 
+          });
+        });
+      });
+    })
+    .catch(error => {
+      console.error("Error checking MT5 connection:", error);
+      isConnectedToMT5 = false;
+      
+      chrome.action.setBadgeText({ text: "" });
+      chrome.action.setTitle({ title: "MT5 Trade Trigger" });
+      
+      // Broadcast to all tabs
+      chrome.tabs.query({}, (tabs) => {
+        tabs.forEach((tab) => {
+          chrome.tabs.sendMessage(tab.id, { 
+            action: "connectionStatusChanged", 
+            isConnected: false
+          });
+        });
       });
     });
-  });
 }
 
 // Initialize state from storage when the extension loads
@@ -111,16 +134,25 @@ chrome.runtime.onInstalled.addListener(() => {
   setInterval(checkConnectionStatus, 5000);
 });
 
-// Listen for tab updates to detect when MT5 might be loaded
+// Listen for tab updates to inject our UI on relevant sites
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && 
-     (tab.url.includes('metatrader5') || 
-      tab.url.includes('mql5') || 
-      tab.url.includes('metaquotes'))) {
+  if (changeInfo.status === 'complete' && tab.url) {
+    // Check if it's a trading-related website
+    const tradingDomains = [
+      'metatrader5', 'mql5', 'metaquotes', 'tradingview', 
+      'forex', 'trading', 'fxcm', 'oanda', 'mt5'
+    ];
     
-    // Wait a moment for the page to fully render, then check connection
-    setTimeout(() => {
-      chrome.tabs.sendMessage(tabId, { action: "checkConnection" });
-    }, 2000);
+    const isTradingRelated = tradingDomains.some(domain => 
+      tab.url.toLowerCase().includes(domain)
+    );
+    
+    if (isTradingRelated) {
+      // Inject our UI
+      chrome.tabs.sendMessage(tabId, { action: "injectUI" });
+      
+      // Check connection status immediately
+      checkConnectionStatus();
+    }
   }
 });

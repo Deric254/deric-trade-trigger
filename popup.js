@@ -1,4 +1,3 @@
-
 // Popup script for the extension
 
 // DOM elements
@@ -19,6 +18,9 @@ const atrLengthInput = document.getElementById('atrLength');
 const cooldownPeriodInput = document.getElementById('cooldownPeriod');
 const enablePyramidingInput = document.getElementById('enablePyramiding');
 const maxPyramidPositionsInput = document.getElementById('maxPyramidPositions');
+
+// Server URL
+const serverUrl = "http://localhost:5555";
 
 // Initialize popup with current state and settings
 function initializePopup() {
@@ -57,16 +59,21 @@ function initializePopup() {
     }
   });
   
-  // Check MT5 connection status
-  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
-    if (tabs.length > 0) {
-      const currentTab = tabs[0];
-      // Send message to content script to check connection
-      chrome.tabs.sendMessage(currentTab.id, { action: "checkConnection" }, (response) => {
-        updateConnectionStatus(response && response.isConnected);
-      });
-    }
-  });
+  // Check MT5 connection status directly with the server
+  checkConnectionStatus();
+}
+
+// Check connection status with the MT5 server
+function checkConnectionStatus() {
+  fetch(`${serverUrl}/status`)
+    .then(response => response.json())
+    .then(data => {
+      updateConnectionStatus(data.connected);
+    })
+    .catch(error => {
+      console.error("Error checking MT5 connection:", error);
+      updateConnectionStatus(false);
+    });
 }
 
 // Update connection status UI
@@ -80,6 +87,32 @@ function updateConnectionStatus(isConnected) {
     connectionStatus.className = 'disconnected';
     connectionIcon.className = 'status-icon disconnected';
   }
+  
+  // Update background script
+  chrome.runtime.sendMessage({ 
+    action: "connectionStatusChanged", 
+    isConnected: isConnected 
+  });
+}
+
+// Connect to MT5 via the server
+function connectToMT5() {
+  fetch(`${serverUrl}/connect`)
+    .then(response => response.json())
+    .then(data => {
+      updateConnectionStatus(data.connected);
+      
+      if (data.connected) {
+        showToast('Connected to MetaTrader 5', 'success');
+      } else {
+        showToast('Failed to connect to MetaTrader 5', 'error');
+      }
+    })
+    .catch(error => {
+      console.error("Error connecting to MT5:", error);
+      showToast('Error connecting to MT5 server', 'error');
+      updateConnectionStatus(false);
+    });
 }
 
 // Toggle enabled state
@@ -224,8 +257,13 @@ function validateInputs() {
 
 // Show error toast
 function showError(message) {
+  showToast(message, 'error');
+}
+
+// Show toast notification
+function showToast(message, type = 'success') {
   const toast = document.createElement('div');
-  toast.className = 'error-toast';
+  toast.className = `error-toast ${type}`;
   toast.textContent = message;
   
   document.body.appendChild(toast);
@@ -238,6 +276,17 @@ function showError(message) {
     }, 300);
   }, 3000);
 }
+
+// Add connect button functionality
+const connectBtn = document.createElement('button');
+connectBtn.textContent = 'Connect to MT5';
+connectBtn.className = 'btn primary-btn';
+connectBtn.style.marginTop = '10px';
+connectBtn.addEventListener('click', connectToMT5);
+
+// Insert connect button after connection status
+const connectionStatusDiv = document.querySelector('.connection-status');
+connectionStatusDiv.appendChild(connectBtn);
 
 // Initialize popup when DOM is loaded
 document.addEventListener('DOMContentLoaded', initializePopup);

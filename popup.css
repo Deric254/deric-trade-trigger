@@ -101,6 +101,9 @@ input:checked + .slider:before {
   border-radius: 6px;
   margin-bottom: 15px;
   box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .status-indicator {
@@ -269,6 +272,11 @@ input[type="number"]:focus {
   box-shadow: 0 2px 5px rgba(76, 175, 80, 0.3) !important;
 }
 
+.error {
+  background-color: #F44336 !important;
+  box-shadow: 0 2px 5px rgba(244, 67, 54, 0.3) !important;
+}
+
 .footer {
   margin-top: 20px;
   padding-top: 12px;
@@ -293,6 +301,10 @@ input[type="number"]:focus {
   animation: fadeIn 0.3s;
 }
 
+.error-toast.success {
+  background-color: #4CAF50;
+}
+
 .fade-out {
   opacity: 0;
   transition: opacity 0.3s;
@@ -301,4 +313,27 @@ input[type="number"]:focus {
 @keyframes fadeIn {
   from { opacity: 0; transform: translate(-50%, 20px); }
   to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.python-setup-info {
+  background-color: #e9f5fe;
+  border-left: 3px solid #2196F3;
+  padding: 10px 15px;
+  margin: 15px 0;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.python-setup-info p {
+  margin: 5px 0;
+}
+
+.python-setup-info a {
+  color: #2196F3;
+  text-decoration: none;
+}
+
+.python-setup-info a:hover {
+  text-decoration: underline;
 }

@@ -7,8 +7,11 @@ let settings = null;
 let lastCrossoverState = null;
 let lastTradeTime = 0;
 let priceData = [];
-let maxPriceDataPoints = 300; // Keep enough data for calculations
+let maxPriceDataPoints = 300;
 let isConnectedToMT5 = false;
+let serverUrl = "http://localhost:5555";
+let activePositions = [];
+let currentSymbol = "EURUSD"; // Default symbol
 
 // Initialize when the content script loads
 function initialize() {
@@ -19,8 +22,34 @@ function initialize() {
     console.log("MT5 Trade Trigger initialized:", { isEnabled, settings });
   });
   
-  // Start monitoring for MT5
-  checkForMT5Interface();
+  // Check if we're on a MT5 or trading related website
+  if (isTradingRelatedSite()) {
+    // Inject the widget UI
+    injectTradeWidget();
+    
+    // Inject CSS for trade notification and widget
+    injectStyles();
+    
+    // Start checking connection status
+    checkConnectionStatus();
+    
+    // Start price monitoring
+    setInterval(monitorPriceData, 1000);
+    
+    // Get active positions periodically
+    setInterval(updatePositions, 5000);
+  }
+}
+
+// Check if current site is trading related
+function isTradingRelatedSite() {
+  const tradingDomains = [
+    'metatrader5', 'mql5', 'metaquotes', 'tradingview', 
+    'forex', 'trading', 'fxcm', 'oanda', 'mt5'
+  ];
+  
+  const hostname = window.location.hostname.toLowerCase();
+  return tradingDomains.some(domain => hostname.includes(domain));
 }
 
 // Default settings if none are saved
@@ -50,6 +79,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       lastCrossoverState = null;
       priceData = [];
     }
+    
+    updateWidgetState();
   } else if (message.action === "settingsChanged") {
     settings = message.settings;
     console.log("Settings updated:", settings);
@@ -65,59 +96,77 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
-// Check if we're on MT5 platform and set up monitoring
-function checkForMT5Interface() {
-  // Check if we're on MT5 platform using more reliable methods
-  const isMT5 = detectMT5Platform();
-  
-  if (isMT5) {
-    console.log("MT5 interface detected. Setting up price monitoring.");
-    isConnectedToMT5 = true;
-    
-    // Update connection status
-    chrome.runtime.sendMessage({ 
-      action: "connectionStatusChanged", 
-      isConnected: true 
+// Check connection status with the MT5 server
+function checkConnectionStatus() {
+  fetch(`${serverUrl}/status`)
+    .then(response => response.json())
+    .then(data => {
+      isConnectedToMT5 = data.connected;
+      
+      // Update connection status in the UI
+      updateConnectionUI(isConnectedToMT5);
+      
+      // Update background script
+      chrome.runtime.sendMessage({ 
+        action: "connectionStatusChanged", 
+        isConnected: isConnectedToMT5 
+      });
+    })
+    .catch(error => {
+      console.error("Error checking MT5 connection:", error);
+      isConnectedToMT5 = false;
+      updateConnectionUI(false);
+      
+      chrome.runtime.sendMessage({ 
+        action: "connectionStatusChanged", 
+        isConnected: false 
+      });
     });
-    
-    // Inject the widget UI
-    injectTradeWidget();
-    
-    // Set up a timer to check for price data and calculate indicators
-    setInterval(monitorPriceData, 1000);
-    
-    // Inject CSS for trade notification and widget
-    injectStyles();
-  } else {
-    // Try again after a delay - sometimes pages load elements dynamically
-    setTimeout(checkForMT5Interface, 2000);
+}
+
+// Update UI based on connection status
+function updateConnectionUI(isConnected) {
+  const connectionIndicator = document.querySelector('.mt5-connection-indicator');
+  const connectionText = document.querySelector('.mt5-connection-text');
+  
+  if (connectionIndicator && connectionText) {
+    if (isConnected) {
+      connectionIndicator.classList.remove('disconnected');
+      connectionIndicator.classList.add('connected');
+      connectionText.textContent = 'Connected to MT5';
+    } else {
+      connectionIndicator.classList.remove('connected');
+      connectionIndicator.classList.add('disconnected');
+      connectionText.textContent = 'Not connected to MT5';
+    }
   }
 }
 
-// More comprehensive MT5 detection
-function detectMT5Platform() {
-  // Look for various MT5-specific elements or URLs
-  const isMetaTraderURL = 
-    window.location.hostname.includes("metatrader5") || 
-    window.location.hostname.includes("mql5") ||
-    window.location.hostname.includes("metaquotes") ||
-    window.location.pathname.includes("terminal");
-  
-  // Look for specific MT5 web terminal elements
-  const hasMT5Elements = 
-    document.querySelector('.chart') ||
-    document.querySelector('[data-symbol]') ||
-    document.querySelector('.terminal') ||
-    document.querySelector('.quote') ||
-    document.getElementById('terminal') ||
-    document.getElementById('chart');
-  
-  // Check for MT5 global objects (if accessible)
-  const hasMT5Objects = 
-    typeof window.MetaTraderWeb !== 'undefined' || 
-    typeof window.MT5WebTerminal !== 'undefined';
-  
-  return isMetaTraderURL || hasMT5Elements || hasMT5Objects;
+// Connect to MT5 via the server
+function connectToMT5() {
+  fetch(`${serverUrl}/connect`)
+    .then(response => response.json())
+    .then(data => {
+      isConnectedToMT5 = data.connected;
+      updateConnectionUI(isConnectedToMT5);
+      
+      if (isConnectedToMT5) {
+        showNotification('Connected to MetaTrader 5', 'success');
+      } else {
+        showNotification('Failed to connect to MetaTrader 5', 'error');
+      }
+      
+      chrome.runtime.sendMessage({ 
+        action: "connectionStatusChanged", 
+        isConnected: isConnectedToMT5 
+      });
+    })
+    .catch(error => {
+      console.error("Error connecting to MT5:", error);
+      showNotification('Error connecting to MT5 server', 'error');
+      isConnectedToMT5 = false;
+      updateConnectionUI(false);
+    });
 }
 
 // Inject CSS styles for notifications and widget
@@ -136,7 +185,11 @@ function injectStyles() {
       font-family: Arial, sans-serif;
       font-size: 14px;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      transition: all 0.3s ease;
+      max-width: 300px;
     }
+    .mt5-trade-notification.success { border-left: 4px solid #4CAF50; }
+    .mt5-trade-notification.error { border-left: 4px solid #F44336; }
     .mt5-trade-notification.buy { border-left: 4px solid #4CAF50; }
     .mt5-trade-notification.sell { border-left: 4px solid #F44336; }
     
@@ -144,7 +197,7 @@ function injectStyles() {
       position: fixed;
       top: 80px;
       right: 20px;
-      width: 250px;
+      width: 280px;
       background-color: rgba(30, 30, 30, 0.9);
       color: white;
       padding: 15px;
@@ -153,6 +206,7 @@ function injectStyles() {
       font-family: 'Segoe UI', Arial, sans-serif;
       box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
       border: 1px solid rgba(255, 255, 255, 0.1);
+      transition: all 0.3s ease;
     }
     
     .mt5-trade-widget h3 {
@@ -161,27 +215,48 @@ function injectStyles() {
       border-bottom: 1px solid rgba(255, 255, 255, 0.2);
       font-size: 16px;
       font-weight: 500;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    
+    .mt5-widget-close {
+      cursor: pointer;
+      font-size: 20px;
+      line-height: 1;
+      opacity: 0.7;
+      transition: opacity 0.2s;
+    }
+    
+    .mt5-widget-close:hover {
+      opacity: 1;
     }
     
     .mt5-widget-status {
       display: flex;
       align-items: center;
       margin-bottom: 10px;
+      justify-content: space-between;
     }
     
     .status-indicator {
+      display: flex;
+      align-items: center;
+    }
+    
+    .mt5-connection-indicator {
       width: 10px;
       height: 10px;
       border-radius: 50%;
       margin-right: 8px;
     }
     
-    .status-active {
+    .mt5-connection-indicator.connected {
       background-color: #4CAF50;
       box-shadow: 0 0 5px #4CAF50;
     }
     
-    .status-inactive {
+    .mt5-connection-indicator.disconnected {
       background-color: #F44336;
       box-shadow: 0 0 5px #F44336;
     }
@@ -216,6 +291,71 @@ function injectStyles() {
       background-color: #F44336;
     }
     
+    .mt5-widget-positions {
+      margin-top: 15px;
+      max-height: 150px;
+      overflow-y: auto;
+      font-size: 12px;
+    }
+    
+    .mt5-position-item {
+      background-color: rgba(255, 255, 255, 0.1);
+      padding: 8px;
+      border-radius: 4px;
+      margin-bottom: 5px;
+      display: flex;
+      justify-content: space-between;
+    }
+    
+    .mt5-position-item.buy {
+      border-left: 3px solid #4CAF50;
+    }
+    
+    .mt5-position-item.sell {
+      border-left: 3px solid #F44336;
+    }
+    
+    .position-details {
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .position-symbol {
+      font-weight: 500;
+    }
+    
+    .position-profit {
+      font-weight: 500;
+    }
+    
+    .position-profit.positive {
+      color: #4CAF50;
+    }
+    
+    .position-profit.negative {
+      color: #F44336;
+    }
+    
+    .position-action {
+      display: flex;
+      align-items: center;
+    }
+    
+    .position-close {
+      background-color: rgba(244, 67, 54, 0.2);
+      color: white;
+      border: none;
+      border-radius: 3px;
+      padding: 3px 6px;
+      cursor: pointer;
+      font-size: 11px;
+      transition: background-color 0.2s;
+    }
+    
+    .position-close:hover {
+      background-color: rgba(244, 67, 54, 0.4);
+    }
+    
     .trade-stat {
       display: flex;
       justify-content: space-between;
@@ -226,6 +366,89 @@ function injectStyles() {
     .trade-stat-value {
       font-weight: 500;
     }
+    
+    .mt5-controls {
+      display: flex;
+      justify-content: space-between;
+      gap: 5px;
+      margin-top: 10px;
+    }
+    
+    .mt5-controls button {
+      flex: 1;
+      padding: 8px 0;
+      border: none;
+      border-radius: 4px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .mt5-buy-btn {
+      background-color: rgba(76, 175, 80, 0.2);
+      color: #4CAF50;
+    }
+    
+    .mt5-buy-btn:hover {
+      background-color: rgba(76, 175, 80, 0.4);
+    }
+    
+    .mt5-sell-btn {
+      background-color: rgba(244, 67, 54, 0.2);
+      color: #F44336;
+    }
+    
+    .mt5-sell-btn:hover {
+      background-color: rgba(244, 67, 54, 0.4);
+    }
+    
+    .mt5-close-all-btn {
+      background-color: rgba(158, 158, 158, 0.2);
+      color: white;
+      font-size: 12px;
+    }
+    
+    .mt5-close-all-btn:hover {
+      background-color: rgba(158, 158, 158, 0.4);
+    }
+    
+    .symbol-selector {
+      margin-top: 10px;
+      width: 100%;
+      padding: 6px;
+      background-color: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      color: white;
+      font-size: 13px;
+    }
+    
+    .symbol-selector option {
+      background-color: #1e1e1e;
+    }
+    
+    .minimized-widget {
+      width: 40px !important;
+      height: 40px !important;
+      border-radius: 50% !important;
+      overflow: hidden;
+      padding: 0 !important;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      cursor: pointer;
+      font-size: 20px;
+    }
+    
+    .minimized-widget * {
+      display: none;
+    }
+    
+    .minimized-widget::after {
+      content: "MT5";
+      font-size: 14px;
+      font-weight: bold;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -234,11 +457,38 @@ function injectStyles() {
 function injectTradeWidget() {
   const widget = document.createElement('div');
   widget.className = 'mt5-trade-widget';
+  widget.id = 'mt5-trade-widget';
   widget.innerHTML = `
-    <h3>MT5 Trade Trigger</h3>
+    <h3>
+      <span>MT5 Trade Trigger</span>
+      <span class="mt5-widget-close" id="minimize-widget">–</span>
+    </h3>
     <div class="mt5-widget-status">
-      <div class="status-indicator ${isEnabled ? 'status-active' : 'status-inactive'}"></div>
-      <span>${isEnabled ? 'Active' : 'Inactive'}</span>
+      <div class="status-indicator">
+        <div class="mt5-connection-indicator disconnected"></div>
+        <span class="mt5-connection-text">Not connected to MT5</span>
+      </div>
+      <div>
+        <div class="trading-status">
+          <div class="status-indicator ${isEnabled ? 'status-active' : 'status-inactive'}"></div>
+          <span>${isEnabled ? 'Trading Active' : 'Trading Inactive'}</span>
+        </div>
+      </div>
+    </div>
+    
+    <select class="symbol-selector" id="symbol-selector">
+      <option value="EURUSD">EUR/USD</option>
+      <option value="GBPUSD">GBP/USD</option>
+      <option value="USDJPY">USD/JPY</option>
+      <option value="AUDUSD">AUD/USD</option>
+      <option value="USDCAD">USD/CAD</option>
+      <option value="NZDUSD">NZD/USD</option>
+    </select>
+    
+    <div class="mt5-controls">
+      <button id="buy-button" class="mt5-buy-btn">BUY</button>
+      <button id="sell-button" class="mt5-sell-btn">SELL</button>
+      <button id="close-all-button" class="mt5-close-all-btn">CLOSE ALL</button>
     </div>
     
     <div class="trade-statistics">
@@ -256,10 +506,15 @@ function injectTradeWidget() {
       </div>
     </div>
     
+    <div class="mt5-widget-positions" id="positions-container">
+      <div class="no-positions">No active positions</div>
+    </div>
+    
     <div class="mt5-widget-actions">
       <button id="toggle-trading" class="${isEnabled ? 'active' : 'inactive'}">
         ${isEnabled ? 'Stop Trading' : 'Start Trading'}
       </button>
+      <button id="connect-button">Connect to MT5</button>
       <button id="open-settings">Settings</button>
     </div>
   `;
@@ -277,105 +532,221 @@ function injectTradeWidget() {
   document.getElementById('open-settings').addEventListener('click', () => {
     chrome.runtime.sendMessage({ action: 'openPopup' });
   });
+  
+  document.getElementById('connect-button').addEventListener('click', () => {
+    connectToMT5();
+  });
+  
+  document.getElementById('buy-button').addEventListener('click', () => {
+    const symbol = document.getElementById('symbol-selector').value;
+    executeTrade('buy', symbol);
+  });
+  
+  document.getElementById('sell-button').addEventListener('click', () => {
+    const symbol = document.getElementById('symbol-selector').value;
+    executeTrade('sell', symbol);
+  });
+  
+  document.getElementById('close-all-button').addEventListener('click', () => {
+    closeAllPositions();
+  });
+  
+  document.getElementById('symbol-selector').addEventListener('change', (e) => {
+    currentSymbol = e.target.value;
+  });
+  
+  // Minimize/maximize widget functionality
+  let isMinimized = false;
+  document.getElementById('minimize-widget').addEventListener('click', () => {
+    const widget = document.getElementById('mt5-trade-widget');
+    
+    if (!isMinimized) {
+      widget.classList.add('minimized-widget');
+      document.getElementById('minimize-widget').textContent = '+';
+    } else {
+      widget.classList.remove('minimized-widget');
+      document.getElementById('minimize-widget').textContent = '–';
+    }
+    
+    isMinimized = !isMinimized;
+  });
 }
 
 // Update widget state based on current settings
 function updateWidgetState() {
-  const statusIndicator = document.querySelector('.status-indicator');
-  const statusText = statusIndicator.nextElementSibling;
   const toggleButton = document.getElementById('toggle-trading');
+  if (!toggleButton) return;
   
   if (isEnabled) {
-    statusIndicator.classList.remove('status-inactive');
-    statusIndicator.classList.add('status-active');
-    statusText.textContent = 'Active';
     toggleButton.textContent = 'Stop Trading';
     toggleButton.classList.remove('inactive');
     toggleButton.classList.add('active');
   } else {
-    statusIndicator.classList.remove('status-active');
-    statusIndicator.classList.add('status-inactive');
-    statusText.textContent = 'Inactive';
     toggleButton.textContent = 'Start Trading';
     toggleButton.classList.remove('active');
     toggleButton.classList.add('inactive');
   }
 }
 
-// Monitor price data from the MT5 interface
+// Monitor price data from the MT5 server
 function monitorPriceData() {
-  if (!isEnabled || !settings) return;
+  if (!isEnabled || !settings || !isConnectedToMT5) return;
   
-  // Try to find price data in MT5's DOM with enhanced methods
-  const currentPrice = extractPriceFromMT5();
+  const symbol = currentSymbol || "EURUSD";
   
-  if (currentPrice) {
-    // Add new price data point
-    const timestamp = Date.now();
-    priceData.push({ time: timestamp, price: currentPrice });
-    
-    // Limit the size of the price data array
-    if (priceData.length > maxPriceDataPoints) {
-      priceData.shift();
-    }
-    
-    // If we have enough data, calculate indicators
-    if (priceData.length >= settings.longMAPeriod + 10) {
-      calculateIndicatorsAndTriggerTrades();
-    }
-  }
-}
-
-// Enhanced price extraction from MT5
-function extractPriceFromMT5() {
-  // Try multiple DOM elements where price might be located
-  const priceSelectors = [
-    '.chart-price', 
-    '.price', 
-    '.bid', 
-    '.ask', 
-    '[data-price]',
-    '.quote-price',
-    '#price',
-    '.live-price',
-    '.chart-panel-price'
-  ];
-  
-  // Check various elements for price information
-  for (const selector of priceSelectors) {
-    const elements = document.querySelectorAll(selector);
-    
-    if (elements.length > 0) {
-      for (const element of elements) {
-        // Extract numbers from element text
-        const priceText = element.textContent || element.getAttribute('data-price') || '';
-        const price = parseFloat(priceText.replace(/[^\d.-]/g, ''));
+  fetch(`${serverUrl}/prices`)
+    .then(response => response.json())
+    .then(data => {
+      if (data && data[symbol]) {
+        const price = data[symbol];
+        const timestamp = Date.now();
         
-        if (!isNaN(price) && price > 0) {
-          return price;
+        // Calculate mid price as average of bid and ask
+        const midPrice = (price.bid + price.ask) / 2;
+        
+        // Add new price data point
+        priceData.push({ time: timestamp, price: midPrice });
+        
+        // Limit the size of the price data array
+        if (priceData.length > maxPriceDataPoints) {
+          priceData.shift();
+        }
+        
+        // If we have enough data, calculate indicators
+        if (priceData.length >= settings.longMAPeriod + 10) {
+          calculateIndicatorsAndTriggerTrades(symbol);
         }
       }
-    }
+    })
+    .catch(error => {
+      console.error("Error fetching price data:", error);
+    });
+}
+
+// Update active positions
+function updatePositions() {
+  if (!isConnectedToMT5) return;
+  
+  fetch(`${serverUrl}/positions`)
+    .then(response => response.json())
+    .then(positions => {
+      activePositions = positions;
+      
+      // Update positions in widget
+      updatePositionsWidget();
+    })
+    .catch(error => {
+      console.error("Error fetching positions:", error);
+    });
+}
+
+// Update positions in widget
+function updatePositionsWidget() {
+  const container = document.getElementById('positions-container');
+  if (!container) return;
+  
+  if (activePositions.length === 0) {
+    container.innerHTML = '<div class="no-positions">No active positions</div>';
+    return;
   }
   
-  // Fallback for MQL5 charts - try to get price from chart title
-  const chartTitles = document.querySelectorAll('.chart-title, .symbol-title');
-  for (const title of chartTitles) {
-    const titleText = title.textContent || '';
-    const priceMatch = titleText.match(/(\d+\.\d+)/);
-    if (priceMatch && priceMatch[1]) {
-      const price = parseFloat(priceMatch[1]);
-      if (!isNaN(price) && price > 0) {
-        return price;
+  let html = '';
+  
+  activePositions.forEach(position => {
+    const isProfit = position.profit > 0;
+    
+    html += `
+      <div class="mt5-position-item ${position.type}">
+        <div class="position-details">
+          <span class="position-symbol">${position.symbol}</span>
+          <span>${position.type.toUpperCase()} ${position.volume}</span>
+        </div>
+        <div class="position-info">
+          <span class="position-profit ${isProfit ? 'positive' : 'negative'}">
+            ${isProfit ? '+' : ''}${position.profit.toFixed(2)} USD
+          </span>
+          <button class="position-close" data-ticket="${position.ticket}">Close</button>
+        </div>
+      </div>
+    `;
+  });
+  
+  container.innerHTML = html;
+  
+  // Add event listeners to close buttons
+  document.querySelectorAll('.position-close').forEach(button => {
+    button.addEventListener('click', (e) => {
+      const ticket = e.target.getAttribute('data-ticket');
+      closePosition(ticket);
+    });
+  });
+}
+
+// Close a specific position
+function closePosition(ticket) {
+  if (!isConnectedToMT5) {
+    showNotification('Not connected to MT5', 'error');
+    return;
+  }
+  
+  const position = activePositions.find(p => p.ticket.toString() === ticket);
+  if (!position) return;
+  
+  fetch(`${serverUrl}/close_positions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ symbol: position.symbol }),
+  })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        showNotification(`Closed position for ${position.symbol}`, 'success');
+        // Update positions
+        updatePositions();
+      } else {
+        showNotification(`Error closing position: ${data.message}`, 'error');
       }
-    }
+    })
+    .catch(error => {
+      console.error("Error closing position:", error);
+      showNotification('Error closing position', 'error');
+    });
+}
+
+// Close all positions
+function closeAllPositions() {
+  if (!isConnectedToMT5) {
+    showNotification('Not connected to MT5', 'error');
+    return;
   }
   
-  return null;
+  fetch(`${serverUrl}/close_positions`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({}),
+  })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        showNotification(`Closed ${data.closed_count} positions`, 'success');
+        // Update positions
+        updatePositions();
+      } else {
+        showNotification(`Error closing positions: ${data.message}`, 'error');
+      }
+    })
+    .catch(error => {
+      console.error("Error closing positions:", error);
+      showNotification('Error closing positions', 'error');
+    });
 }
 
 // Calculate technical indicators and check for trade signals
-function calculateIndicatorsAndTriggerTrades() {
+function calculateIndicatorsAndTriggerTrades(symbol) {
   if (priceData.length < Math.max(settings.longMAPeriod, settings.emaPeriod)) return;
   
   const prices = priceData.map(data => data.price);
@@ -415,12 +786,7 @@ function calculateIndicatorsAndTriggerTrades() {
         const stopLoss = currentPrice - atrValue;
         const takeProfit = currentPrice + (atrValue * 2); // 1:2 risk-reward ratio
         
-        triggerTrade("buy", {
-          price: currentPrice,
-          stopLoss: stopLoss,
-          takeProfit: takeProfit,
-          lotSize: settings.lotSizePerTrade
-        });
+        executeTrade("buy", symbol, settings.lotSizePerTrade, stopLoss, takeProfit);
         
         // Update last trade time and widget
         lastTradeTime = currentTime;
@@ -432,12 +798,7 @@ function calculateIndicatorsAndTriggerTrades() {
         const stopLoss = currentPrice + atrValue;
         const takeProfit = currentPrice - (atrValue * 2); // 1:2 risk-reward ratio
         
-        triggerTrade("sell", {
-          price: currentPrice,
-          stopLoss: stopLoss,
-          takeProfit: takeProfit,
-          lotSize: settings.lotSizePerTrade
-        });
+        executeTrade("sell", symbol, settings.lotSizePerTrade, stopLoss, takeProfit);
         
         // Update last trade time and widget
         lastTradeTime = currentTime;
@@ -457,8 +818,7 @@ function updateWidgetWithLatestData(data) {
   // but only if the widget exists in the DOM
   const lastSignalElement = document.getElementById('last-signal');
   if (lastSignalElement) {
-    // You could add more information here if needed
-    // For now we just keep the last signal indication
+    // We could add more information here if needed
   }
 }
 
@@ -519,193 +879,80 @@ function calculateATR(prices, period) {
   return atrValues.reduce((sum, tr) => sum + tr, 0) / period;
 }
 
-// Trigger a trade based on the signal
-function triggerTrade(direction, details) {
-  console.log(`MT5 Trade Trigger: ${direction.toUpperCase()} signal detected`, details);
+// Execute a trade using the MT5 server
+function executeTrade(direction, symbol = "EURUSD", lotSize = null, stopLoss = null, takeProfit = null) {
+  if (!isConnectedToMT5) {
+    showNotification('Not connected to MT5', 'error');
+    return;
+  }
   
-  // Display notification to the user
-  showTradeNotification(direction, details);
+  // Use settings lot size if not specified
+  if (lotSize === null && settings) {
+    lotSize = settings.lotSizePerTrade;
+  }
   
-  // Try to click on trade buttons in MT5
-  attemptToTriggerTradeUI(direction, details);
+  // Check pyramiding settings
+  if (settings && !settings.enablePyramiding) {
+    // Check if we already have a position for this symbol
+    const existingPositions = activePositions.filter(p => p.symbol === symbol);
+    if (existingPositions.length > 0) {
+      showNotification('Position already exists and pyramiding is disabled', 'error');
+      return;
+    }
+  } else if (settings && settings.enablePyramiding) {
+    // Check if we've reached the maximum number of positions
+    const existingPositions = activePositions.filter(p => p.symbol === symbol);
+    if (existingPositions.length >= settings.maxPyramidPositions) {
+      showNotification(`Maximum pyramid positions (${settings.maxPyramidPositions}) reached`, 'error');
+      return;
+    }
+  }
+  
+  // Prepare trade request
+  const tradeRequest = {
+    direction: direction,
+    symbol: symbol,
+    lotSize: lotSize
+  };
+  
+  if (stopLoss !== null) {
+    tradeRequest.stopLoss = stopLoss;
+  }
+  
+  if (takeProfit !== null) {
+    tradeRequest.takeProfit = takeProfit;
+  }
+  
+  // Execute trade via server
+  fetch(`${serverUrl}/trade`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(tradeRequest),
+  })
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        showTradeNotification(direction, {
+          price: data.price,
+          lotSize: lotSize,
+          symbol: symbol,
+          stopLoss: stopLoss,
+          takeProfit: takeProfit
+        });
+        
+        // Update positions after successful trade
+        setTimeout(updatePositions, 1000);
+      } else {
+        showNotification(`Trade failed: ${data.message}`, 'error');
+      }
+    })
+    .catch(error => {
+      console.error("Error executing trade:", error);
+      showNotification('Error executing trade', 'error');
+    });
 }
 
 // Show a notification for the trade signal
-function showTradeNotification(direction, details) {
-  const notification = document.createElement('div');
-  notification.className = `mt5-trade-notification ${direction}`;
-  notification.innerHTML = `
-    <strong>${direction.toUpperCase()} Signal</strong><br>
-    Price: ${details.price.toFixed(5)}<br>
-    Stop Loss: ${details.stopLoss.toFixed(5)}<br>
-    Take Profit: ${details.takeProfit.toFixed(5)}<br>
-    Lot Size: ${details.lotSize}
-  `;
-  
-  document.body.appendChild(notification);
-  
-  // Remove notification after 5 seconds
-  setTimeout(() => {
-    notification.remove();
-  }, 5000);
-}
-
-// Attempt to interact with MT5's UI to trigger the trade
-function attemptToTriggerTradeUI(direction, details) {
-  // Enhanced version with more robust selectors for various MT5 web interfaces
-  const buySelectors = [
-    '.buy-button', 
-    '[data-action="buy"]', 
-    '[title*="Buy"]', 
-    '[class*="buy"]', 
-    'button:contains("Buy")',
-    '[data-order-type="buy"]',
-    '[data-direction="buy"]',
-    '.new-order-buy',
-    '#placeOrderBuy'
-  ];
-  
-  const sellSelectors = [
-    '.sell-button', 
-    '[data-action="sell"]', 
-    '[title*="Sell"]', 
-    '[class*="sell"]', 
-    'button:contains("Sell")',
-    '[data-order-type="sell"]',
-    '[data-direction="sell"]',
-    '.new-order-sell',
-    '#placeOrderSell'
-  ];
-  
-  try {
-    // Try to find and click the appropriate button
-    if (direction === "buy") {
-      for (const selector of buySelectors) {
-        const buttons = document.querySelectorAll(selector);
-        if (buttons.length > 0) {
-          console.log(`Found ${buttons.length} buy buttons with selector: ${selector}`);
-          buttons[0].click();
-          
-          // After clicking, try to set stop loss, take profit, and lot size
-          setTimeout(() => setOrderParameters(details), 500);
-          return;
-        }
-      }
-    } else if (direction === "sell") {
-      for (const selector of sellSelectors) {
-        const buttons = document.querySelectorAll(selector);
-        if (buttons.length > 0) {
-          console.log(`Found ${buttons.length} sell buttons with selector: ${selector}`);
-          buttons[0].click();
-          
-          // After clicking, try to set stop loss, take profit, and lot size
-          setTimeout(() => setOrderParameters(details), 500);
-          return;
-        }
-      }
-    }
-    
-    console.log("Could not find buy/sell buttons automatically. MT5 interface may have changed.");
-  } catch (err) {
-    console.error("Error attempting to trigger trade UI:", err);
-  }
-}
-
-// Try to set order parameters (stop loss, take profit, lot size)
-function setOrderParameters(details) {
-  try {
-    // Selectors for order form fields (these vary greatly by MT5 implementation)
-    const lotSizeSelectors = [
-      '[name="volume"]', 
-      '[data-type="volume"]',
-      '[placeholder="Volume"]',
-      '#volume',
-      '.volume-control',
-      '[name="lotSize"]',
-      'input[type="number"][step="0.01"]'
-    ];
-    
-    const slSelectors = [
-      '[name="sl"]', 
-      '[data-type="sl"]',
-      '[placeholder="Stop Loss"]',
-      '#stopLoss',
-      '.stop-loss-control',
-      '[name="stopLoss"]'
-    ];
-    
-    const tpSelectors = [
-      '[name="tp"]', 
-      '[data-type="tp"]',
-      '[placeholder="Take Profit"]',
-      '#takeProfit',
-      '.take-profit-control',
-      '[name="takeProfit"]'
-    ];
-    
-    // Try to set lot size
-    for (const selector of lotSizeSelectors) {
-      const lotInputs = document.querySelectorAll(selector);
-      if (lotInputs.length > 0) {
-        console.log(`Setting lot size to ${details.lotSize}`);
-        setInputValue(lotInputs[0], details.lotSize);
-      }
-    }
-    
-    // Try to set stop loss
-    for (const selector of slSelectors) {
-      const slInputs = document.querySelectorAll(selector);
-      if (slInputs.length > 0) {
-        console.log(`Setting stop loss to ${details.stopLoss.toFixed(5)}`);
-        setInputValue(slInputs[0], details.stopLoss.toFixed(5));
-      }
-    }
-    
-    // Try to set take profit
-    for (const selector of tpSelectors) {
-      const tpInputs = document.querySelectorAll(selector);
-      if (tpInputs.length > 0) {
-        console.log(`Setting take profit to ${details.takeProfit.toFixed(5)}`);
-        setInputValue(tpInputs[0], details.takeProfit.toFixed(5));
-      }
-    }
-    
-    // Look for confirm/submit button
-    const confirmSelectors = [
-      '.confirm-button',
-      '[type="submit"]',
-      'button:contains("Confirm")',
-      'button:contains("Place Order")',
-      '.submit-order',
-      '#submitOrder',
-      '.order-confirm'
-    ];
-    
-    for (const selector of confirmSelectors) {
-      const confirmButtons = document.querySelectorAll(selector);
-      if (confirmButtons.length > 0) {
-        console.log('Clicking confirm button');
-        confirmButtons[0].click();
-        return;
-      }
-    }
-  } catch (err) {
-    console.error("Error setting order parameters:", err);
-  }
-}
-
-// Helper function to set input value and trigger change event
-function setInputValue(element, value) {
-  // Set the value
-  element.value = value;
-  
-  // Trigger change events
-  const changeEvent = new Event('change', { bubbles: true });
-  const inputEvent = new Event('input', { bubbles: true });
-  
-  element.dispatchEvent(inputEvent);
-  element.dispatchEvent(changeEvent);
-}
-
-// Initialize the content script
-initialize();
+function showTradeNotification(direction, details)

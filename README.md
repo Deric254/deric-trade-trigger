@@ -1,73 +1,49 @@
-# Welcome to your Lovable project
 
-## Project info
+# MT5 Trade Trigger Extension
 
-**URL**: https://lovable.dev/projects/1dc8790c-8794-4403-836f-8c1a2f1e160a
+This Chrome extension automatically triggers trades in MetaTrader 5 based on a simple moving average crossover strategy.
 
-## How can I edit this code?
+## Setup Instructions
 
-There are several ways of editing your application.
+### Prerequisites
+- MetaTrader 5 installed on your computer
+- Python 3.7+ installed
+- Chrome browser
 
-**Use Lovable**
+### Python Setup
+1. Install the required Python packages:
+   ```
+   pip install MetaTrader5 
+   ```
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/1dc8790c-8794-4403-836f-8c1a2f1e160a) and start prompting.
+2. Run the MT5 server script:
+   ```
+   python mt5_server.py
+   ```
+   This will start a local server on port 5555 that connects to your MetaTrader 5 terminal.
 
-Changes made via Lovable will be committed automatically to this repo.
+3. Make sure MetaTrader 5 is running and logged in to your trading account.
 
-**Use your preferred IDE**
+### Extension Installation
+1. Open Chrome and navigate to `chrome://extensions/`
+2. Enable "Developer mode" in the top-right corner
+3. Click "Load unpacked" and select the extension folder
+4. The extension should now appear in your Chrome toolbar
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## Usage
+1. Click on the extension icon to open the settings popup
+2. Configure your trading parameters
+3. Toggle the switch to enable automated trading
+4. When on MT5-related sites, the floating widget will appear for quick controls
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+## Features
+- Moving average crossover strategy with EMA filter
+- Automatic trade execution with stop loss and take profit
+- Position pyramiding option
+- Ability to customize indicators and risk parameters
+- Real-time connection status indicator
 
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
-
-**Edit a file directly in GitHub**
-
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
-
-**Use GitHub Codespaces**
-
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/1dc8790c-8794-4403-836f-8c1a2f1e160a) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/tips-tricks/custom-domain#step-by-step-guide)
+## Troubleshooting
+- If the extension shows "Not connected to MT5", make sure the Python server is running
+- Check that MetaTrader 5 is open and logged in
+- Verify that no firewall is blocking the connection
