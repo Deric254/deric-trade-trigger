@@ -1,10 +1,10 @@
 
 body {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: 'Roboto', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   margin: 0;
   padding: 0;
   width: 360px;
-  background-color: #f5f5f5;
+  background-color: #f8f9fa;
   color: #333;
 }
 
@@ -16,8 +16,8 @@ body {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #ddd;
-  padding-bottom: 10px;
+  border-bottom: 1px solid #e9ecef;
+  padding-bottom: 12px;
   margin-bottom: 15px;
 }
 
@@ -26,12 +26,14 @@ h1 {
   margin: 0;
   font-weight: 600;
   color: #2a3f54;
+  letter-spacing: -0.5px;
 }
 
 h2 {
   font-size: 16px;
-  margin: 15px 0 10px;
+  margin: 18px 0 12px;
   color: #2a3f54;
+  font-weight: 500;
 }
 
 .switch-container {
@@ -61,18 +63,20 @@ h2 {
   right: 0;
   bottom: 0;
   background-color: #ccc;
-  transition: .4s;
+  transition: .3s;
+  box-shadow: inset 0 0 3px rgba(0,0,0,0.1);
 }
 
 .slider:before {
   position: absolute;
   content: "";
-  height: 16px;
-  width: 16px;
-  left: 4px;
-  bottom: 4px;
+  height: 18px;
+  width: 18px;
+  left: 3px;
+  bottom: 3px;
   background-color: white;
-  transition: .4s;
+  transition: .3s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.2);
 }
 
 input:checked + .slider {
@@ -91,6 +95,57 @@ input:checked + .slider:before {
   border-radius: 50%;
 }
 
+.connection-status {
+  background-color: #f1f3f5;
+  padding: 10px 15px;
+  border-radius: 6px;
+  margin-bottom: 15px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #555;
+}
+
+.status-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.status-icon.connected {
+  color: #4CAF50;
+  text-shadow: 0 0 5px rgba(76, 175, 80, 0.5);
+}
+
+.status-icon.disconnected {
+  color: #F44336;
+  text-shadow: 0 0 5px rgba(244, 67, 54, 0.5);
+}
+
+.connected {
+  color: #4CAF50;
+  font-weight: 500;
+}
+
+.disconnected {
+  color: #F44336;
+  font-weight: 500;
+}
+
+.enabled {
+  color: #4CAF50;
+  font-weight: 500;
+}
+
+.disabled {
+  color: #F44336;
+  font-weight: 500;
+}
+
 .settings-container {
   margin-top: 15px;
 }
@@ -102,70 +157,148 @@ input:checked + .slider:before {
 }
 
 label {
-  font-size: 14px;
-  margin-bottom: 5px;
-  color: #555;
+  font-size: 13px;
+  margin-bottom: 6px;
+  color: #495057;
 }
 
 input[type="number"] {
-  padding: 8px 10px;
-  border: 1px solid #ddd;
-  border-radius: 4px;
+  padding: 9px 12px;
+  border: 1px solid #ced4da;
+  border-radius: 5px;
   font-size: 14px;
+  transition: border-color 0.2s, box-shadow 0.2s;
+  background-color: #fff;
+}
+
+input[type="number"]:focus {
+  border-color: #80bdff;
+  outline: 0;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.checkbox-group {
+  margin: 12px 0;
+}
+
+.checkbox-container {
+  display: flex;
+  align-items: center;
+  position: relative;
+  padding-left: 28px;
+  cursor: pointer;
+  font-size: 13px;
+  user-select: none;
+  color: #495057;
+}
+
+.checkbox-container input {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  height: 0;
+  width: 0;
+}
+
+.checkmark {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 18px;
+  width: 18px;
+  background-color: #fff;
+  border: 1px solid #ced4da;
+  border-radius: 3px;
+}
+
+.checkbox-container:hover input ~ .checkmark {
+  background-color: #f1f3f5;
+}
+
+.checkbox-container input:checked ~ .checkmark {
+  background-color: #2196F3;
+  border-color: #2196F3;
+}
+
+.checkmark:after {
+  content: "";
+  position: absolute;
+  display: none;
+}
+
+.checkbox-container input:checked ~ .checkmark:after {
+  display: block;
+}
+
+.checkbox-container .checkmark:after {
+  left: 6px;
+  top: 3px;
+  width: 4px;
+  height: 8px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 
 .btn {
-  background-color: #2196F3;
-  color: white;
   border: none;
-  padding: 10px 15px;
+  padding: 10px 16px;
   text-align: center;
   font-size: 14px;
   cursor: pointer;
-  border-radius: 4px;
+  border-radius: 5px;
+  font-weight: 500;
   width: 100%;
-  margin-top: 10px;
-  transition: background-color 0.3s;
+  margin-top: 15px;
+  transition: all 0.2s;
 }
 
-.btn:hover {
-  background-color: #0b7dda;
+.primary-btn {
+  background-color: #2196F3;
+  color: white;
+  box-shadow: 0 2px 5px rgba(33, 150, 243, 0.3);
+}
+
+.primary-btn:hover {
+  background-color: #0d8bf2;
+  box-shadow: 0 4px 8px rgba(33, 150, 243, 0.4);
+}
+
+.success {
+  background-color: #4CAF50 !important;
+  box-shadow: 0 2px 5px rgba(76, 175, 80, 0.3) !important;
 }
 
 .footer {
-  margin-top: 15px;
-  padding-top: 10px;
-  border-top: 1px solid #ddd;
+  margin-top: 20px;
+  padding-top: 12px;
+  border-top: 1px solid #e9ecef;
   font-size: 12px;
-  color: #777;
+  color: #868e96;
+  text-align: center;
 }
 
-.status-indicator {
-  display: flex;
-  align-items: center;
-  gap: 5px;
+.error-toast {
+  position: fixed;
+  bottom: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background-color: #f44336;
+  color: white;
+  padding: 10px 15px;
+  border-radius: 4px;
+  font-size: 13px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+  z-index: 1000;
+  animation: fadeIn 0.3s;
 }
 
-#statusText {
-  font-weight: 500;
+.fade-out {
+  opacity: 0;
+  transition: opacity 0.3s;
 }
 
-#statusText.enabled {
-  color: #4CAF50;
-}
-
-#statusText.disabled {
-  color: #F44336;
-}
-
-#connectionStatus {
-  font-style: italic;
-}
-
-#connectionStatus.connected {
-  color: #4CAF50;
-}
-
-#connectionStatus.disconnected {
-  color: #F44336;
+@keyframes fadeIn {
+  from { opacity: 0; transform: translate(-50%, 20px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
 }

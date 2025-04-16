@@ -6,6 +6,7 @@ const enabledSwitch = document.getElementById('enabledSwitch');
 const statusText = document.getElementById('statusText');
 const saveSettingsBtn = document.getElementById('saveSettings');
 const connectionStatus = document.getElementById('connectionStatus');
+const connectionIcon = document.getElementById('connectionIcon');
 
 // Input elements
 const accountSizeInput = document.getElementById('accountSize');
@@ -16,6 +17,8 @@ const longMAPeriodInput = document.getElementById('longMAPeriod');
 const emaPeriodInput = document.getElementById('emaPeriod');
 const atrLengthInput = document.getElementById('atrLength');
 const cooldownPeriodInput = document.getElementById('cooldownPeriod');
+const enablePyramidingInput = document.getElementById('enablePyramiding');
+const maxPyramidPositionsInput = document.getElementById('maxPyramidPositions');
 
 // Initialize popup with current state and settings
 function initializePopup() {
@@ -42,6 +45,15 @@ function initializePopup() {
       emaPeriodInput.value = result.settings.emaPeriod;
       atrLengthInput.value = result.settings.atrLength;
       cooldownPeriodInput.value = result.settings.cooldownPeriod;
+      
+      // Set advanced options if they exist
+      if (result.settings.enablePyramiding !== undefined) {
+        enablePyramidingInput.checked = result.settings.enablePyramiding;
+      }
+      
+      if (result.settings.maxPyramidPositions !== undefined) {
+        maxPyramidPositionsInput.value = result.settings.maxPyramidPositions;
+      }
     }
   });
   
@@ -49,20 +61,25 @@ function initializePopup() {
   chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
     if (tabs.length > 0) {
       const currentTab = tabs[0];
-      const isMT5 = 
-        currentTab.url.includes('metatrader5') || 
-        currentTab.url.includes('mql5') ||
-        currentTab.url.includes('metaquotes');
-      
-      if (isMT5) {
-        connectionStatus.textContent = 'Connected to MT5';
-        connectionStatus.className = 'connected';
-      } else {
-        connectionStatus.textContent = 'Not connected to MT5';
-        connectionStatus.className = 'disconnected';
-      }
+      // Send message to content script to check connection
+      chrome.tabs.sendMessage(currentTab.id, { action: "checkConnection" }, (response) => {
+        updateConnectionStatus(response && response.isConnected);
+      });
     }
   });
+}
+
+// Update connection status UI
+function updateConnectionStatus(isConnected) {
+  if (isConnected) {
+    connectionStatus.textContent = 'Connected to MT5';
+    connectionStatus.className = 'connected';
+    connectionIcon.className = 'status-icon connected';
+  } else {
+    connectionStatus.textContent = 'Not connected to MT5';
+    connectionStatus.className = 'disconnected';
+    connectionIcon.className = 'status-icon disconnected';
+  }
 }
 
 // Toggle enabled state
@@ -103,7 +120,9 @@ saveSettingsBtn.addEventListener('click', () => {
     longMAPeriod: parseInt(longMAPeriodInput.value),
     emaPeriod: parseInt(emaPeriodInput.value),
     atrLength: parseInt(atrLengthInput.value),
-    cooldownPeriod: parseInt(cooldownPeriodInput.value)
+    cooldownPeriod: parseInt(cooldownPeriodInput.value),
+    enablePyramiding: enablePyramidingInput.checked,
+    maxPyramidPositions: parseInt(maxPyramidPositionsInput.value)
   };
   
   // Send message to background script
@@ -117,12 +136,12 @@ saveSettingsBtn.addEventListener('click', () => {
       
       // Show saved confirmation
       saveBtn.textContent = 'Settings Saved!';
-      saveBtn.style.backgroundColor = '#4CAF50';
+      saveBtn.classList.add('success');
       
       // Reset button after 2 seconds
       setTimeout(() => {
         saveBtn.textContent = originalText;
-        saveBtn.style.backgroundColor = '#2196F3';
+        saveBtn.classList.remove('success');
       }, 2000);
     }
   });
@@ -132,69 +151,102 @@ saveSettingsBtn.addEventListener('click', () => {
 function validateInputs() {
   // Validate account size
   if (accountSizeInput.value < 1) {
-    alert('Account size must be at least 1 USD');
+    showError('Account size must be at least 1 USD');
     accountSizeInput.focus();
     return false;
   }
   
   // Validate risk per trade
   if (riskPerTradeInput.value < 1) {
-    alert('Risk per trade must be at least 1 USD');
+    showError('Risk per trade must be at least 1 USD');
     riskPerTradeInput.focus();
     return false;
   }
   
   // Validate lot size
   if (lotSizePerTradeInput.value < 0.01) {
-    alert('Lot size must be at least 0.01');
+    showError('Lot size must be at least 0.01');
     lotSizePerTradeInput.focus();
     return false;
   }
   
   // Validate short MA period
   if (shortMAPeriodInput.value < 1) {
-    alert('Short MA period must be at least 1');
+    showError('Short MA period must be at least 1');
     shortMAPeriodInput.focus();
     return false;
   }
   
   // Validate long MA period
   if (longMAPeriodInput.value < 1) {
-    alert('Long MA period must be at least 1');
+    showError('Long MA period must be at least 1');
     longMAPeriodInput.focus();
     return false;
   }
   
   // Validate that short MA is less than long MA
   if (parseInt(shortMAPeriodInput.value) >= parseInt(longMAPeriodInput.value)) {
-    alert('Short MA period must be less than Long MA period');
+    showError('Short MA period must be less than Long MA period');
     shortMAPeriodInput.focus();
     return false;
   }
   
   // Validate EMA period
   if (emaPeriodInput.value < 1) {
-    alert('EMA period must be at least 1');
+    showError('EMA period must be at least 1');
     emaPeriodInput.focus();
     return false;
   }
   
   // Validate ATR length
   if (atrLengthInput.value < 1) {
-    alert('ATR length must be at least 1');
+    showError('ATR length must be at least 1');
     atrLengthInput.focus();
     return false;
   }
   
   // Validate cooldown period
   if (cooldownPeriodInput.value < 1) {
-    alert('Cooldown period must be at least 1 minute');
+    showError('Cooldown period must be at least 1 minute');
     cooldownPeriodInput.focus();
+    return false;
+  }
+  
+  // Validate pyramid positions
+  if (enablePyramidingInput.checked && (maxPyramidPositionsInput.value < 1 || maxPyramidPositionsInput.value > 10)) {
+    showError('Max pyramid positions must be between 1 and 10');
+    maxPyramidPositionsInput.focus();
     return false;
   }
   
   return true;
 }
 
+// Show error toast
+function showError(message) {
+  const toast = document.createElement('div');
+  toast.className = 'error-toast';
+  toast.textContent = message;
+  
+  document.body.appendChild(toast);
+  
+  // Remove toast after 3 seconds
+  setTimeout(() => {
+    toast.classList.add('fade-out');
+    setTimeout(() => {
+      toast.remove();
+    }, 300);
+  }, 3000);
+}
+
 // Initialize popup when DOM is loaded
 document.addEventListener('DOMContentLoaded', initializePopup);
+
+// Listen for messages from the background script
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === "connectionStatusChanged") {
+    updateConnectionStatus(message.isConnected);
+  }
+  
+  return true;
+});

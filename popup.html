@@ -4,6 +4,7 @@
 <head>
   <title>MT5 Trade Trigger</title>
   <link rel="stylesheet" href="popup.css">
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
 </head>
 <body>
   <div class="container">
@@ -15,6 +16,13 @@
           <span class="slider round"></span>
         </label>
         <span id="statusText">Disabled</span>
+      </div>
+    </div>
+    
+    <div class="connection-status">
+      <div class="status-indicator">
+        <span id="connectionIcon" class="status-icon disconnected">&#9679;</span>
+        <span id="connectionStatus">Not connected to MT5</span>
       </div>
     </div>
     
@@ -61,13 +69,25 @@
         <input type="number" id="cooldownPeriod" min="1" value="10">
       </div>
       
-      <button id="saveSettings" class="btn">Save Settings</button>
+      <h2>Advanced Options</h2>
+      <div class="setting-group checkbox-group">
+        <label class="checkbox-container">
+          <input type="checkbox" id="enablePyramiding">
+          <span class="checkmark"></span>
+          Enable Position Pyramiding
+        </label>
+      </div>
+      
+      <div class="setting-group">
+        <label for="maxPyramidPositions">Max Pyramid Positions:</label>
+        <input type="number" id="maxPyramidPositions" min="1" max="10" value="3">
+      </div>
+      
+      <button id="saveSettings" class="btn primary-btn">Save Settings</button>
     </div>
     
     <div class="footer">
-      <div class="status-indicator">
-        <span id="connectionStatus">Not connected to MT5</span>
-      </div>
+      <div class="version">Version 1.0</div>
     </div>
   </div>
   
