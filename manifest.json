@@ -5,7 +5,7 @@
   "version": "1.0",
   "description": "Triggers trades in MT5 based on SMA/EMA crossover strategy",
   "permissions": ["storage", "activeTab", "scripting"],
-  "host_permissions": ["*://*.metatrader5.com/*", "*://*.metaquotes.net/*"],
+  "host_permissions": ["*://*.metatrader5.com/*", "*://*.metaquotes.net/*", "*://*.mql5.com/*"],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {

@@ -1,68 +1,29 @@
-// Variables to store state and settings
-let isEnabled = false;
-let settings = {};
-let priceData = [];
-let lastSignalTime = 0;
-let isMT5Detected = false;
 
-// Check if we're on an MT5 platform
-function checkForMT5() {
-  // Common selectors or elements found in MT5 web platforms
-  const mt5Indicators = [
-    '.chart-page', // MetaTrader Web Terminal
-    '#terminal-container', // MT5 Web Platform
-    '.xmc__trading-platform', // XM MT5 WebTrader
-    '.trading-platform-container' // Generic container
-  ];
-  
-  for (const selector of mt5Indicators) {
-    if (document.querySelector(selector)) {
-      return true;
-    }
-  }
-  
-  // Check for MT5-specific title patterns
-  const title = document.title.toLowerCase();
-  if (title.includes('metatrader') || title.includes('mt5') || title.includes('trading terminal')) {
-    return true;
-  }
-  
-  return false;
-}
+// Content script for MT5 Trade Trigger extension
+console.log("MT5 Trade Trigger content script loaded");
+
+// State variables
+let isEnabled = false;
+let settings = null;
+let lastCrossoverState = null;
+let lastTradeTime = 0;
+let priceData = [];
+let maxPriceDataPoints = 300; // Keep enough data for calculations
 
 // Initialize when the content script loads
 function initialize() {
-  // Check if we're on an MT5 platform
-  isMT5Detected = checkForMT5();
-  
-  if (!isMT5Detected) {
-    console.log('Deric MT5 Trade Trigger: MT5 platform not detected on this page.');
-    return;
-  }
-  
-  console.log('Deric MT5 Trade Trigger: MT5 platform detected!');
-  
-  // Send message to background script to get current state
-  chrome.runtime.sendMessage({ action: "getState" }, (response) => {
-    isEnabled = response.isEnabled;
-  });
-  
-  // Load settings from storage
-  chrome.storage.local.get(["settings"], (result) => {
+  // Get current extension state and settings from storage
+  chrome.storage.local.get(["isEnabled", "settings"], (result) => {
+    isEnabled = result.isEnabled || false;
     settings = result.settings || getDefaultSettings();
+    console.log("MT5 Trade Trigger initialized:", { isEnabled, settings });
   });
   
-  // Start observing DOM changes to detect chart updates
-  setupObserver();
-  
-  // Setup price data collection (if available on the page)
-  setupPriceDataCollection();
-  
-  // Add UI notification to indicate the extension is active
-  addNotification();
+  // Start monitoring for MT5
+  checkForMT5Interface();
 }
 
-// Default settings in case storage fails
+// Default settings if none are saved
 function getDefaultSettings() {
   return {
     accountSize: 5000,
@@ -76,501 +37,265 @@ function getDefaultSettings() {
   };
 }
 
-// Setup MutationObserver to watch for chart changes
-function setupObserver() {
-  const observer = new MutationObserver((mutations) => {
-    // If the extension is disabled, don't process changes
-    if (!isEnabled) return;
+// Listen for messages from the background script
+chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === "stateChanged") {
+    isEnabled = message.isEnabled;
+    console.log("Extension state changed:", isEnabled);
     
-    // Process DOM changes to detect chart updates
-    // This is a simplified example - actual implementation would be more complex
-    // and specific to the MT5 web platform's DOM structure
-    mutations.forEach(mutation => {
-      if (mutation.type === 'childList' || mutation.type === 'attributes') {
-        // Check for price data updates on chart
-        collectPriceData();
+    if (isEnabled) {
+      // Reset state when enabled
+      lastCrossoverState = null;
+      priceData = [];
+    }
+  } else if (message.action === "settingsChanged") {
+    settings = message.settings;
+    console.log("Settings updated:", settings);
+    
+    // Reset trading state when settings change
+    lastCrossoverState = null;
+  }
+  
+  return true;
+});
+
+// Check if we're on MT5 platform and set up monitoring
+function checkForMT5Interface() {
+  // Check if we're on MT5 platform
+  const isMT5 = 
+    window.location.hostname.includes("metatrader5") || 
+    window.location.hostname.includes("mql5") ||
+    window.location.hostname.includes("metaquotes");
+  
+  if (isMT5) {
+    console.log("MT5 interface detected. Setting up price monitoring.");
+    
+    // Set up a timer to check for price data and calculate indicators
+    setInterval(monitorPriceData, 1000);
+    
+    // Inject CSS for trade notification
+    injectNotificationStyles();
+  }
+}
+
+// Inject CSS for trade notifications
+function injectNotificationStyles() {
+  const style = document.createElement('style');
+  style.textContent = `
+    .mt5-trade-notification {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background-color: rgba(0, 0, 0, 0.8);
+      color: white;
+      padding: 12px 20px;
+      border-radius: 4px;
+      z-index: 9999;
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    .mt5-trade-notification.buy { border-left: 4px solid #4CAF50; }
+    .mt5-trade-notification.sell { border-left: 4px solid #F44336; }
+  `;
+  document.head.appendChild(style);
+}
+
+// Monitor price data from the MT5 interface
+function monitorPriceData() {
+  if (!isEnabled || !settings) return;
+  
+  // Try to find price data in MT5's DOM (this is a simplified example)
+  const priceElements = document.querySelectorAll('.price, .bid, .ask, [data-price]');
+  
+  if (priceElements.length > 0) {
+    // Extract latest price (this would need to be adjusted to the actual MT5 interface)
+    let currentPrice = null;
+    priceElements.forEach(el => {
+      const price = parseFloat(el.textContent.replace(/[^\d.-]/g, ''));
+      if (!isNaN(price) && price > 0) {
+        currentPrice = price;
       }
     });
-  });
-  
-  // Target node is the chart container - this would need to be adjusted for specific MT5 platforms
-  const targetNodes = [
-    '.chart-container',
-    '#chart-container',
-    '.trading-chart',
-    // Add more potential selectors based on MT5 web platforms
-  ];
-  
-  for (const selector of targetNodes) {
-    const targetNode = document.querySelector(selector);
-    if (targetNode) {
-      observer.observe(targetNode, { 
-        childList: true, 
-        subtree: true, 
-        attributes: true,
-        characterData: true 
-      });
-      console.log(`Deric MT5 Trade Trigger: Observing ${selector}`);
-      break;
-    }
-  }
-}
-
-// Collect price data from the MT5 chart (simplified)
-function collectPriceData() {
-  // This is a placeholder - actual implementation would depend on how 
-  // to access price data from the MT5 web platform, which may require
-  // more complex DOM interactions or request interception
-  console.log('Attempting to collect price data');
-  
-  // If we can access price data from the page, we would add it to our array
-  // For now, we'll use simulated data for demonstration
-  simulatePriceData();
-}
-
-// Setup price data collection intervals
-function setupPriceDataCollection() {
-  // Set up an interval to collect data regularly
-  setInterval(() => {
-    if (isEnabled) {
-      collectPriceData();
-    }
-  }, 5000); // Check every 5 seconds
-}
-
-// For demo purposes - simulates getting price data
-function simulatePriceData() {
-  // In a real implementation, you would extract actual price data from the MT5 DOM
-  // or use an API if available
-  
-  // For simulation, we'll add a random tick to the last price
-  if (priceData.length === 0) {
-    // Start with a random price around 1.1000 (like EURUSD)
-    priceData.push({
-      timestamp: Date.now(),
-      open: 1.1000 + (Math.random() * 0.01 - 0.005),
-      high: 1.1005 + (Math.random() * 0.01 - 0.005),
-      low: 0.9995 + (Math.random() * 0.01 - 0.005),
-      close: 1.1000 + (Math.random() * 0.01 - 0.005),
-      volume: Math.floor(Math.random() * 1000) + 100
-    });
-  } else {
-    const lastPrice = priceData[priceData.length - 1].close;
-    const change = (Math.random() * 0.002 - 0.001); // Small random change
-    const newClose = lastPrice + change;
     
-    priceData.push({
-      timestamp: Date.now(),
-      open: lastPrice,
-      high: Math.max(lastPrice, newClose) + (Math.random() * 0.0005),
-      low: Math.min(lastPrice, newClose) - (Math.random() * 0.0005),
-      close: newClose,
-      volume: Math.floor(Math.random() * 1000) + 100
-    });
-  }
-  
-  // Keep only the last 300 price points (enough for our calculations)
-  if (priceData.length > 300) {
-    priceData = priceData.slice(-300);
-  }
-  
-  // Process the updated data
-  processData();
-}
-
-// Process the collected price data to generate signals
-function processData() {
-  if (priceData.length < Math.max(settings.shortMAPeriod, settings.longMAPeriod, settings.emaPeriod)) {
-    // Not enough data yet
-    return;
-  }
-  
-  // Extract closing prices
-  const closePrices = priceData.map(candle => candle.close);
-  const volumes = priceData.map(candle => candle.volume);
-  
-  // Calculate the indicators
-  const shortMA = calculateSMA(closePrices, settings.shortMAPeriod);
-  const longMA = calculateSMA(closePrices, settings.longMAPeriod);
-  const ema200 = calculateEMA(closePrices, settings.emaPeriod);
-  
-  // Calculate ATR
-  const atrValue = calculateATR(priceData, settings.atrLength);
-  
-  // Calculate average volume
-  const avgVolume = calculateSMA(volumes, 20);
-  
-  // Get the current values
-  const currentCandle = priceData[priceData.length - 1];
-  const previousCandle = priceData[priceData.length - 2];
-  
-  if (!currentCandle || !previousCandle) return;
-  
-  const currentClose = currentCandle.close;
-  const currentVolume = currentCandle.volume;
-  
-  // Previous indicator values
-  const prevShortMA = shortMA[shortMA.length - 2];
-  const prevLongMA = longMA[longMA.length - 2];
-  
-  // Current indicator values
-  const currShortMA = shortMA[shortMA.length - 1];
-  const currLongMA = longMA[longMA.length - 1];
-  const currEMA200 = ema200[ema200.length - 1];
-  
-  // Check for crossover conditions
-  const crossedAbove = prevShortMA < prevLongMA && currShortMA > currLongMA;
-  const crossedBelow = prevShortMA > prevLongMA && currShortMA < currLongMA;
-  
-  // Calculate stop loss and take profit levels
-  const stopLossDistance = atrValue[atrValue.length - 1]; // 1 ATR
-  const takeProfitDistance = stopLossDistance * 10; // 10:1 risk-reward
-  
-  // Filter conditions
-  const above200EMA = currentClose > currEMA200;
-  const below200EMA = currentClose < currEMA200;
-  const volumeCondition = currentVolume > avgVolume[avgVolume.length - 1];
-  
-  // Low volatility filter
-  const avgATR = calculateSMA(atrValue, 20);
-  const lowVolatilityCondition = atrValue[atrValue.length - 1] > avgATR[avgATR.length - 1];
-  
-  // Risk-reward ratio filter
-  const favorableRiskReward = takeProfitDistance / stopLossDistance >= 2;
-  
-  // Cooldown check
-  const currentTime = Date.now();
-  const cooldownInMs = settings.cooldownPeriod * 60 * 1000; // Convert bars to ms (assuming 1 bar = 1 minute)
-  const tradeCooldown = (currentTime - lastSignalTime) >= cooldownInMs;
-  
-  // Check for buy signal
-  if (crossedAbove && above200EMA && volumeCondition && lowVolatilityCondition && favorableRiskReward && tradeCooldown) {
-    // Generate buy signal
-    const signal = {
-      type: "BUY",
-      price: currentClose,
-      timestamp: currentTime,
-      symbol: getSymbolFromPage() || "Unknown",
-      stopLoss: currentClose - stopLossDistance,
-      takeProfit: currentClose + takeProfitDistance
-    };
-    
-    // Store the signal
-    saveSignal(signal);
-    
-    // Trigger the trade (in a real implementation)
-    triggerTrade(signal);
-    
-    // Update last signal time
-    lastSignalTime = currentTime;
-  }
-  
-  // Check for sell signal
-  if (crossedBelow && below200EMA && volumeCondition && lowVolatilityCondition && favorableRiskReward && tradeCooldown) {
-    // Generate sell signal
-    const signal = {
-      type: "SELL",
-      price: currentClose,
-      timestamp: currentTime,
-      symbol: getSymbolFromPage() || "Unknown",
-      stopLoss: currentClose + stopLossDistance,
-      takeProfit: currentClose - takeProfitDistance
-    };
-    
-    // Store the signal
-    saveSignal(signal);
-    
-    // Trigger the trade (in a real implementation)
-    triggerTrade(signal);
-    
-    // Update last signal time
-    lastSignalTime = currentTime;
-  }
-}
-
-// Trigger a trade in MT5 (this would need to be customized for the specific MT5 web platform)
-function triggerTrade(signal) {
-  console.log(`Deric MT5 Trade Trigger: ${signal.type} signal generated at ${signal.price}`);
-  
-  // Display a notification to the user
-  showTradeNotification(signal);
-  
-  // Here you would interact with the MT5 web platform DOM to place the trade
-  // This is highly platform-specific and would require knowledge of the
-  // specific platform's DOM structure and interactivity
-  
-  // Example (simplified):
-  try {
-    // Find and click the "New Order" button (selector would vary by platform)
-    const newOrderButton = document.querySelector('.new-order-btn, .order-button, #place-order');
-    if (newOrderButton) {
-      newOrderButton.click();
+    if (currentPrice) {
+      // Add new price data point
+      const timestamp = Date.now();
+      priceData.push({ time: timestamp, price: currentPrice });
       
-      // Wait for order dialog to open
-      setTimeout(() => {
-        // Set order type (buy/sell)
-        const buyButton = document.querySelector('.buy-button, .btn-buy, #btn-buy');
-        const sellButton = document.querySelector('.sell-button, .btn-sell, #btn-sell');
-        
-        if (signal.type === 'BUY' && buyButton) {
-          buyButton.click();
-        } else if (signal.type === 'SELL' && sellButton) {
-          sellButton.click();
-        }
-        
-        // Set lot size
-        const lotSizeInput = document.querySelector('.lot-size-input, #volume, #lot-size');
-        if (lotSizeInput) {
-          lotSizeInput.value = settings.lotSizePerTrade;
-          // Trigger change event
-          lotSizeInput.dispatchEvent(new Event('change'));
-        }
-        
-        // Set stop loss
-        const slInput = document.querySelector('.sl-input, #stop-loss, #sl');
-        if (slInput) {
-          slInput.value = signal.stopLoss.toFixed(5);
-          slInput.dispatchEvent(new Event('change'));
-        }
-        
-        // Set take profit
-        const tpInput = document.querySelector('.tp-input, #take-profit, #tp');
-        if (tpInput) {
-          tpInput.value = signal.takeProfit.toFixed(5);
-          tpInput.dispatchEvent(new Event('change'));
-        }
-        
-        // Submit order
-        const submitButton = document.querySelector('.submit-button, .place-order-btn, #place-order-btn');
-        if (submitButton) {
-          submitButton.click();
-        }
-      }, 500);
+      // Limit the size of the price data array
+      if (priceData.length > maxPriceDataPoints) {
+        priceData.shift();
+      }
+      
+      // If we have enough data, calculate indicators
+      if (priceData.length >= settings.longMAPeriod + 10) {
+        calculateIndicatorsAndTriggerTrades();
+      }
     }
-  } catch (error) {
-    console.error('Deric MT5 Trade Trigger: Error placing trade', error);
   }
 }
 
-// Save signal to storage
-function saveSignal(signal) {
-  chrome.storage.local.get(["signals"], (result) => {
-    let signals = result.signals || [];
-    signals.push(signal);
-    
-    // Keep only the last 100 signals
-    if (signals.length > 100) {
-      signals = signals.slice(-100);
-    }
-    
-    chrome.storage.local.set({ signals });
-    
-    // Notify the popup about new signal
-    chrome.runtime.sendMessage({ action: "newSignal" });
-  });
-}
-
-// Technical Indicators Calculation Functions
-function calculateSMA(data, period) {
-  const sma = [];
+// Calculate technical indicators and check for trade signals
+function calculateIndicatorsAndTriggerTrades() {
+  if (priceData.length < Math.max(settings.longMAPeriod, settings.emaPeriod)) return;
   
-  for (let i = 0; i < data.length; i++) {
-    if (i < period - 1) {
-      sma.push(null);
-      continue;
+  const prices = priceData.map(data => data.price);
+  const currentTime = Date.now();
+  
+  // Calculate moving averages
+  const shortMA = calculateSMA(prices, settings.shortMAPeriod);
+  const longMA = calculateSMA(prices, settings.longMAPeriod);
+  const ema200 = calculateEMA(prices, settings.emaPeriod);
+  
+  // Calculate ATR for volatility
+  const atrValue = calculateATR(prices, settings.atrLength);
+  
+  // Current price is the latest price
+  const currentPrice = prices[prices.length - 1];
+  
+  // Determine crossover state (1 = shortMA above longMA, -1 = shortMA below longMA)
+  const currentCrossoverState = shortMA > longMA ? 1 : -1;
+  
+  // Check for a crossover
+  if (lastCrossoverState !== null && lastCrossoverState !== currentCrossoverState) {
+    // Check time-based cooldown
+    const cooldownTimeMs = settings.cooldownPeriod * 60 * 1000; // Convert minutes to ms
+    if (currentTime - lastTradeTime >= cooldownTimeMs) {
+      
+      // Long condition: shortMA crosses above longMA and price is above EMA200
+      if (currentCrossoverState === 1 && currentPrice > ema200) {
+        const stopLoss = currentPrice - atrValue;
+        const takeProfit = currentPrice + (atrValue * 2); // 1:2 risk-reward ratio
+        
+        triggerTrade("buy", {
+          price: currentPrice,
+          stopLoss: stopLoss,
+          takeProfit: takeProfit,
+          lotSize: settings.lotSizePerTrade
+        });
+        
+        lastTradeTime = currentTime;
+      }
+      // Short condition: shortMA crosses below longMA and price is below EMA200
+      else if (currentCrossoverState === -1 && currentPrice < ema200) {
+        const stopLoss = currentPrice + atrValue;
+        const takeProfit = currentPrice - (atrValue * 2); // 1:2 risk-reward ratio
+        
+        triggerTrade("sell", {
+          price: currentPrice,
+          stopLoss: stopLoss,
+          takeProfit: takeProfit,
+          lotSize: settings.lotSizePerTrade
+        });
+        
+        lastTradeTime = currentTime;
+      }
     }
-    
-    let sum = 0;
-    for (let j = 0; j < period; j++) {
-      sum += data[i - j];
-    }
-    
-    sma.push(sum / period);
   }
   
-  return sma;
+  // Update last crossover state
+  lastCrossoverState = currentCrossoverState;
 }
 
-function calculateEMA(data, period) {
-  const ema = [];
+// Calculate Simple Moving Average (SMA)
+function calculateSMA(prices, period) {
+  if (prices.length < period) return null;
+  
+  const slice = prices.slice(-period);
+  return slice.reduce((sum, price) => sum + price, 0) / period;
+}
+
+// Calculate Exponential Moving Average (EMA)
+function calculateEMA(prices, period) {
+  if (prices.length < period) return null;
+  
+  // First EMA is calculated as SMA
+  let ema = calculateSMA(prices.slice(0, period), period);
   const multiplier = 2 / (period + 1);
   
-  // Start with SMA for the first EMA value
-  let sum = 0;
-  for (let i = 0; i < period; i++) {
-    sum += data[i];
-  }
-  
-  ema.push(sum / period);
-  
-  // Calculate EMA values
-  for (let i = period; i < data.length; i++) {
-    const currentValue = data[i];
-    const previousEMA = ema[i - period];
-    
-    const currentEMA = (currentValue - previousEMA) * multiplier + previousEMA;
-    ema.push(currentEMA);
+  for (let i = period; i < prices.length; i++) {
+    ema = (prices[i] - ema) * multiplier + ema;
   }
   
   return ema;
 }
 
-function calculateATR(data, period) {
-  const trueRanges = [];
-  const atr = [];
+// Calculate Average True Range (ATR)
+function calculateATR(prices, period) {
+  if (prices.length < period + 1) return null;
   
-  // Calculate True Range for each candle
-  for (let i = 0; i < data.length; i++) {
-    if (i === 0) {
-      // First candle - use high - low
-      trueRanges.push(data[i].high - data[i].low);
-    } else {
-      // Calculate the three differences
-      const highLowDiff = data[i].high - data[i].low;
-      const highCloseDiff = Math.abs(data[i].high - data[i-1].close);
-      const lowCloseDiff = Math.abs(data[i].low - data[i-1].close);
-      
-      // True Range is the max of these three
-      trueRanges.push(Math.max(highLowDiff, highCloseDiff, lowCloseDiff));
-    }
-  }
+  const trValues = [];
   
-  // Calculate ATR using SMA initially
-  for (let i = 0; i < trueRanges.length; i++) {
-    if (i < period - 1) {
-      atr.push(null);
-      continue;
-    }
+  // Calculate True Range values
+  for (let i = 1; i < prices.length; i++) {
+    const high = prices[i];
+    const low = prices[i];
+    const previousClose = prices[i-1];
     
-    if (i === period - 1) {
-      // First ATR value is simple average of TR
-      let sum = 0;
-      for (let j = 0; j < period; j++) {
-        sum += trueRanges[i - j];
-      }
-      atr.push(sum / period);
-    } else {
-      // Subsequent ATR values using the smoothing formula
-      const previousATR = atr[atr.length - 1];
-      const currentTR = trueRanges[i];
-      atr.push((previousATR * (period - 1) + currentTR) / period);
-    }
+    const tr1 = high - low;
+    const tr2 = Math.abs(high - previousClose);
+    const tr3 = Math.abs(low - previousClose);
+    
+    const trueRange = Math.max(tr1, tr2, tr3);
+    trValues.push(trueRange);
   }
   
-  return atr;
+  // Calculate ATR as average of True Range values
+  const atrValues = trValues.slice(-period);
+  return atrValues.reduce((sum, tr) => sum + tr, 0) / period;
 }
 
-// Try to extract the current symbol from the page
-function getSymbolFromPage() {
-  // This would need to be adapted to the specific MT5 web platform
-  const symbolElements = [
-    '.symbol-name',
-    '.instrument-name',
-    '#symbol-name',
-    '.chart-title'
-  ];
+// Trigger a trade based on the signal
+function triggerTrade(direction, details) {
+  console.log(`MT5 Trade Trigger: ${direction.toUpperCase()} signal detected`, details);
   
-  for (const selector of symbolElements) {
-    const element = document.querySelector(selector);
-    if (element && element.textContent) {
-      return element.textContent.trim();
-    }
-  }
+  // Display notification to the user
+  showTradeNotification(direction, details);
   
-  return null;
+  // Try to click on trade buttons in MT5
+  attemptToTriggerTradeUI(direction, details);
 }
 
-// Add notification to the page to show the extension is active
-function addNotification() {
-  const notificationDiv = document.createElement('div');
-  notificationDiv.id = 'deric-trade-trigger-notification';
-  notificationDiv.style.cssText = `
-    position: fixed;
-    top: 10px;
-    right: 10px;
-    background-color: rgba(33, 150, 243, 0.8);
-    color: white;
-    padding: 10px;
-    border-radius: 5px;
-    font-family: Arial, sans-serif;
-    font-size: 14px;
-    z-index: 9999;
-    cursor: pointer;
-    transition: opacity 0.3s;
+// Show a notification for the trade signal
+function showTradeNotification(direction, details) {
+  const notification = document.createElement('div');
+  notification.className = `mt5-trade-notification ${direction}`;
+  notification.innerHTML = `
+    <strong>${direction.toUpperCase()} Signal</strong><br>
+    Price: ${details.price.toFixed(5)}<br>
+    Stop Loss: ${details.stopLoss.toFixed(5)}<br>
+    Take Profit: ${details.takeProfit.toFixed(5)}<br>
+    Lot Size: ${details.lotSize}
   `;
   
-  notificationDiv.textContent = 'Deric Trade Trigger Active';
-  notificationDiv.title = 'Click to hide';
-  
-  notificationDiv.addEventListener('click', () => {
-    notificationDiv.style.opacity = '0';
-    setTimeout(() => {
-      notificationDiv.remove();
-    }, 300);
-  });
-  
-  document.body.appendChild(notificationDiv);
-}
-
-// Display trade notification on the page
-function showTradeNotification(signal) {
-  const notificationDiv = document.createElement('div');
-  notificationDiv.style.cssText = `
-    position: fixed;
-    top: 70px;
-    right: 10px;
-    background-color: ${signal.type === 'BUY' ? 'rgba(76, 175, 80, 0.9)' : 'rgba(244, 67, 54, 0.9)'};
-    color: white;
-    padding: 15px;
-    border-radius: 5px;
-    font-family: Arial, sans-serif;
-    font-size: 14px;
-    z-index: 9999;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.2);
-    transition: all 0.3s;
-  `;
-  
-  notificationDiv.innerHTML = `
-    <div style="font-weight: bold; margin-bottom: 5px;">${signal.type} Signal Generated</div>
-    <div>Price: ${signal.price.toFixed(5)}</div>
-    <div>Stop Loss: ${signal.stopLoss.toFixed(5)}</div>
-    <div>Take Profit: ${signal.takeProfit.toFixed(5)}</div>
-    <div style="font-size: 12px; margin-top: 5px;">${new Date(signal.timestamp).toLocaleTimeString()}</div>
-  `;
-  
-  document.body.appendChild(notificationDiv);
+  document.body.appendChild(notification);
   
   // Remove notification after 5 seconds
   setTimeout(() => {
-    notificationDiv.style.opacity = '0';
-    notificationDiv.style.transform = 'translateX(100px)';
-    setTimeout(() => {
-      notificationDiv.remove();
-    }, 300);
+    notification.remove();
   }, 5000);
 }
 
-// Listen for messages from the background script
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === "stateChanged") {
-    isEnabled = message.isEnabled;
-    console.log(`Deric MT5 Trade Trigger: Extension ${isEnabled ? 'enabled' : 'disabled'}`);
-  } else if (message.action === "settingsChanged") {
-    settings = message.settings;
-    console.log('Deric MT5 Trade Trigger: Settings updated', settings);
+// Attempt to interact with MT5's UI to trigger the trade
+function attemptToTriggerTradeUI(direction, details) {
+  // This function would need to be customized to the specific MT5 interface
+  // It would locate and click UI elements to place trades
+  
+  // Example (this is simplified and would need to be adapted)
+  const buyButtons = document.querySelectorAll('.buy-button, [data-action="buy"]');
+  const sellButtons = document.querySelectorAll('.sell-button, [data-action="sell"]');
+  
+  if (direction === "buy" && buyButtons.length > 0) {
+    console.log("Attempting to click buy button");
+    buyButtons[0].click();
+  } else if (direction === "sell" && sellButtons.length > 0) {
+    console.log("Attempting to click sell button");
+    sellButtons[0].click();
   }
-});
-
-// Start the extension
-initialize();
-
-// Re-check for MT5 platform every 5 seconds in case it loads after our content script
-if (!isMT5Detected) {
-  const checkInterval = setInterval(() => {
-    if (checkForMT5()) {
-      console.log('Deric MT5 Trade Trigger: MT5 platform detected after page load!');
-      clearInterval(checkInterval);
-      initialize();
-    }
-  }, 5000);
+  
+  // Additional code would be needed to set stop loss, take profit, and lot size
 }
+
+// Initialize the content script
+initialize();

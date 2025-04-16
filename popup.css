@@ -1,59 +1,50 @@
 
-/* General Styles */
 body {
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
   margin: 0;
   padding: 0;
-  background-color: #f8f9fa;
+  width: 360px;
+  background-color: #f5f5f5;
   color: #333;
-  width: 380px;
-  max-height: 600px;
-  overflow-x: hidden;
 }
 
 .container {
   padding: 15px;
 }
 
-h1 {
-  font-size: 1.4rem;
-  margin: 0;
-  color: #2c3e50;
-}
-
-h2 {
-  font-size: 1.1rem;
-  margin: 15px 0 10px;
-  color: #2c3e50;
-}
-
-h3 {
-  font-size: 0.95rem;
-  margin: 10px 0 5px;
-  color: #34495e;
-}
-
-/* Header Styles */
-header {
+.header {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  border-bottom: 1px solid #ddd;
   padding-bottom: 10px;
-  border-bottom: 1px solid #e0e0e0;
+  margin-bottom: 15px;
 }
 
-/* Toggle Switch */
-.toggle-container {
+h1 {
+  font-size: 20px;
+  margin: 0;
+  font-weight: 600;
+  color: #2a3f54;
+}
+
+h2 {
+  font-size: 16px;
+  margin: 15px 0 10px;
+  color: #2a3f54;
+}
+
+.switch-container {
   display: flex;
   align-items: center;
+  gap: 10px;
 }
 
 .switch {
   position: relative;
   display: inline-block;
-  width: 48px;
+  width: 50px;
   height: 24px;
-  margin-right: 10px;
 }
 
 .switch input {
@@ -76,10 +67,10 @@ header {
 .slider:before {
   position: absolute;
   content: "";
-  height: 18px;
-  width: 18px;
-  left: 3px;
-  bottom: 3px;
+  height: 16px;
+  width: 16px;
+  left: 4px;
+  bottom: 4px;
   background-color: white;
   transition: .4s;
 }
@@ -88,12 +79,8 @@ input:checked + .slider {
   background-color: #2196F3;
 }
 
-input:focus + .slider {
-  box-shadow: 0 0 1px #2196F3;
-}
-
 input:checked + .slider:before {
-  transform: translateX(24px);
+  transform: translateX(26px);
 }
 
 .slider.round {
@@ -104,118 +91,81 @@ input:checked + .slider:before {
   border-radius: 50%;
 }
 
+.settings-container {
+  margin-top: 15px;
+}
+
+.setting-group {
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+label {
+  font-size: 14px;
+  margin-bottom: 5px;
+  color: #555;
+}
+
+input[type="number"] {
+  padding: 8px 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+}
+
+.btn {
+  background-color: #2196F3;
+  color: white;
+  border: none;
+  padding: 10px 15px;
+  text-align: center;
+  font-size: 14px;
+  cursor: pointer;
+  border-radius: 4px;
+  width: 100%;
+  margin-top: 10px;
+  transition: background-color 0.3s;
+}
+
+.btn:hover {
+  background-color: #0b7dda;
+}
+
+.footer {
+  margin-top: 15px;
+  padding-top: 10px;
+  border-top: 1px solid #ddd;
+  font-size: 12px;
+  color: #777;
+}
+
+.status-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
 #statusText {
   font-weight: 500;
 }
 
-/* Strategy Info */
-.strategy-info {
-  background-color: #e8f4fc;
-  padding: 10px;
-  border-radius: 5px;
-  margin: 15px 0;
-  border-left: 4px solid #2196F3;
+#statusText.enabled {
+  color: #4CAF50;
 }
 
-.strategy-info p {
-  margin: 5px 0;
-  font-size: 0.9rem;
-  line-height: 1.4;
+#statusText.disabled {
+  color: #F44336;
 }
 
-/* Settings Section */
-.settings-section {
-  margin: 15px 0;
-}
-
-.settings-group {
-  background-color: #fff;
-  border: 1px solid #e0e0e0;
-  border-radius: 5px;
-  padding: 10px;
-  margin-bottom: 15px;
-}
-
-.form-group {
-  margin-bottom: 10px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-label {
-  font-size: 0.9rem;
-  flex: 1;
-}
-
-input[type="number"] {
-  width: 100px;
-  padding: 6px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 0.9rem;
-}
-
-button {
-  background-color: #2196F3;
-  color: white;
-  border: none;
-  padding: 8px 15px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-weight: 500;
-  width: 100%;
-  margin-top: 10px;
-}
-
-button:hover {
-  background-color: #0d8aee;
-}
-
-/* Signals Section */
-.signals-section {
-  margin: 15px 0;
-  max-height: 200px;
-  overflow-y: auto;
-}
-
-#signalsContainer {
-  background-color: #fff;
-  border: 1px solid #e0e0e0;
-  border-radius: 5px;
-  padding: 10px;
-}
-
-.signal-item {
-  padding: 8px;
-  border-bottom: 1px solid #f0f0f0;
-  font-size: 0.85rem;
-}
-
-.signal-buy {
-  color: #4caf50;
-}
-
-.signal-sell {
-  color: #f44336;
-}
-
-.signal-item:last-child {
-  border-bottom: none;
-}
-
-.no-signals {
+#connectionStatus {
   font-style: italic;
-  color: #888;
-  text-align: center;
 }
 
-/* Footer */
-footer {
-  margin-top: 15px;
-  padding-top: 10px;
-  border-top: 1px solid #e0e0e0;
-  text-align: center;
-  font-size: 0.8rem;
-  color: #777;
+#connectionStatus.connected {
+  color: #4CAF50;
+}
+
+#connectionStatus.disconnected {
+  color: #F44336;
 }

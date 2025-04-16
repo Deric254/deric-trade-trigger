@@ -1,132 +1,200 @@
 
-document.addEventListener('DOMContentLoaded', () => {
-  const enableToggle = document.getElementById('enableToggle');
-  const statusText = document.getElementById('statusText');
-  const settingsForm = document.getElementById('settingsForm');
-  const signalsContainer = document.getElementById('signalsContainer');
-  
-  // Input fields
-  const shortMAPeriod = document.getElementById('shortMAPeriod');
-  const longMAPeriod = document.getElementById('longMAPeriod');
-  const emaPeriod = document.getElementById('emaPeriod');
-  const accountSize = document.getElementById('accountSize');
-  const riskPerTrade = document.getElementById('riskPerTrade');
-  const lotSizePerTrade = document.getElementById('lotSizePerTrade');
-  const atrLength = document.getElementById('atrLength');
-  const cooldownPeriod = document.getElementById('cooldownPeriod');
-  
-  // Initialize the UI with the current state
-  chrome.runtime.sendMessage({ action: "getState" }, (response) => {
-    enableToggle.checked = response.isEnabled;
-    statusText.textContent = response.isEnabled ? "Enabled" : "Disabled";
-    statusText.style.color = response.isEnabled ? "#4caf50" : "#f44336";
-  });
-  
-  // Load settings from storage
-  chrome.storage.local.get(["settings", "signals"], (result) => {
-    const settings = result.settings || {};
+// Popup script for the extension
+
+// DOM elements
+const enabledSwitch = document.getElementById('enabledSwitch');
+const statusText = document.getElementById('statusText');
+const saveSettingsBtn = document.getElementById('saveSettings');
+const connectionStatus = document.getElementById('connectionStatus');
+
+// Input elements
+const accountSizeInput = document.getElementById('accountSize');
+const riskPerTradeInput = document.getElementById('riskPerTrade');
+const lotSizePerTradeInput = document.getElementById('lotSizePerTrade');
+const shortMAPeriodInput = document.getElementById('shortMAPeriod');
+const longMAPeriodInput = document.getElementById('longMAPeriod');
+const emaPeriodInput = document.getElementById('emaPeriod');
+const atrLengthInput = document.getElementById('atrLength');
+const cooldownPeriodInput = document.getElementById('cooldownPeriod');
+
+// Initialize popup with current state and settings
+function initializePopup() {
+  // Get current state and settings from storage
+  chrome.storage.local.get(['isEnabled', 'settings'], (result) => {
+    // Set enabled state
+    if (result.isEnabled) {
+      enabledSwitch.checked = true;
+      statusText.textContent = 'Enabled';
+      statusText.className = 'enabled';
+    } else {
+      enabledSwitch.checked = false;
+      statusText.textContent = 'Disabled';
+      statusText.className = 'disabled';
+    }
     
-    // Populate form fields with saved settings
-    shortMAPeriod.value = settings.shortMAPeriod || 15;
-    longMAPeriod.value = settings.longMAPeriod || 100;
-    emaPeriod.value = settings.emaPeriod || 200;
-    accountSize.value = settings.accountSize || 5000;
-    riskPerTrade.value = settings.riskPerTrade || 20;
-    lotSizePerTrade.value = settings.lotSizePerTrade || 1.0;
-    atrLength.value = settings.atrLength || 14;
-    cooldownPeriod.value = settings.cooldownPeriod || 10;
-    
-    // Display signals if any exist
-    if (result.signals && result.signals.length > 0) {
-      displaySignals(result.signals);
+    // Set settings values if they exist
+    if (result.settings) {
+      accountSizeInput.value = result.settings.accountSize;
+      riskPerTradeInput.value = result.settings.riskPerTrade;
+      lotSizePerTradeInput.value = result.settings.lotSizePerTrade;
+      shortMAPeriodInput.value = result.settings.shortMAPeriod;
+      longMAPeriodInput.value = result.settings.longMAPeriod;
+      emaPeriodInput.value = result.settings.emaPeriod;
+      atrLengthInput.value = result.settings.atrLength;
+      cooldownPeriodInput.value = result.settings.cooldownPeriod;
     }
   });
   
-  // Handle toggle click
-  enableToggle.addEventListener('change', () => {
-    const isEnabled = enableToggle.checked;
-    statusText.textContent = isEnabled ? "Enabled" : "Disabled";
-    statusText.style.color = isEnabled ? "#4caf50" : "#f44336";
-    
-    // Send message to background script
-    chrome.runtime.sendMessage({ 
-      action: "toggleEnabled", 
-      value: isEnabled 
-    });
-  });
-  
-  // Handle settings form submit
-  settingsForm.addEventListener('submit', (e) => {
-    e.preventDefault();
-    
-    // Collect settings from form
-    const settings = {
-      shortMAPeriod: parseInt(shortMAPeriod.value),
-      longMAPeriod: parseInt(longMAPeriod.value),
-      emaPeriod: parseInt(emaPeriod.value),
-      accountSize: parseInt(accountSize.value),
-      riskPerTrade: parseInt(riskPerTrade.value),
-      lotSizePerTrade: parseFloat(lotSizePerTrade.value),
-      atrLength: parseInt(atrLength.value),
-      cooldownPeriod: parseInt(cooldownPeriod.value)
-    };
-    
-    // Save settings
-    chrome.runtime.sendMessage({ 
-      action: "saveSettings", 
-      settings 
-    }, (response) => {
-      if (response.success) {
-        // Briefly show "Saved" message
-        const button = document.getElementById('saveSettings');
-        const originalText = button.textContent;
-        button.textContent = "Saved!";
-        button.disabled = true;
-        
-        setTimeout(() => {
-          button.textContent = originalText;
-          button.disabled = false;
-        }, 1500);
+  // Check MT5 connection status
+  chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+    if (tabs.length > 0) {
+      const currentTab = tabs[0];
+      const isMT5 = 
+        currentTab.url.includes('metatrader5') || 
+        currentTab.url.includes('mql5') ||
+        currentTab.url.includes('metaquotes');
+      
+      if (isMT5) {
+        connectionStatus.textContent = 'Connected to MT5';
+        connectionStatus.className = 'connected';
+      } else {
+        connectionStatus.textContent = 'Not connected to MT5';
+        connectionStatus.className = 'disconnected';
       }
-    });
-  });
-  
-  // Listen for new signals
-  chrome.runtime.onMessage.addListener((message) => {
-    if (message.action === "newSignal") {
-      chrome.storage.local.get(["signals"], (result) => {
-        const signals = result.signals || [];
-        displaySignals(signals);
-      });
     }
   });
+}
+
+// Toggle enabled state
+enabledSwitch.addEventListener('change', () => {
+  const isEnabled = enabledSwitch.checked;
   
-  // Function to display signals
-  function displaySignals(signals) {
-    signalsContainer.innerHTML = "";
-    
-    if (signals.length === 0) {
-      signalsContainer.innerHTML = `<p class="no-signals">No signals generated yet.</p>`;
-      return;
-    }
-    
-    // Display the most recent 10 signals
-    const recentSignals = signals.slice(-10).reverse();
-    
-    recentSignals.forEach(signal => {
-      const signalElement = document.createElement('div');
-      signalElement.className = `signal-item signal-${signal.type.toLowerCase()}`;
-      
-      const date = new Date(signal.timestamp);
-      const formattedDate = `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
-      
-      signalElement.innerHTML = `
-        <strong>${signal.type}</strong> @ ${signal.price.toFixed(5)}
-        <br>
-        <small>${formattedDate} - ${signal.symbol}</small>
-      `;
-      
-      signalsContainer.appendChild(signalElement);
-    });
+  // Update UI
+  if (isEnabled) {
+    statusText.textContent = 'Enabled';
+    statusText.className = 'enabled';
+  } else {
+    statusText.textContent = 'Disabled';
+    statusText.className = 'disabled';
   }
+  
+  // Send message to background script
+  chrome.runtime.sendMessage({ 
+    action: 'toggleEnabled', 
+    value: isEnabled 
+  }, (response) => {
+    console.log('Toggled enabled state:', response);
+  });
 });
+
+// Save settings
+saveSettingsBtn.addEventListener('click', () => {
+  // Validate inputs
+  if (!validateInputs()) {
+    return;
+  }
+  
+  // Create settings object from inputs
+  const settings = {
+    accountSize: parseInt(accountSizeInput.value),
+    riskPerTrade: parseInt(riskPerTradeInput.value),
+    lotSizePerTrade: parseFloat(lotSizePerTradeInput.value),
+    shortMAPeriod: parseInt(shortMAPeriodInput.value),
+    longMAPeriod: parseInt(longMAPeriodInput.value),
+    emaPeriod: parseInt(emaPeriodInput.value),
+    atrLength: parseInt(atrLengthInput.value),
+    cooldownPeriod: parseInt(cooldownPeriodInput.value)
+  };
+  
+  // Send message to background script
+  chrome.runtime.sendMessage({ 
+    action: 'saveSettings', 
+    settings: settings 
+  }, (response) => {
+    if (response.success) {
+      const saveBtn = document.getElementById('saveSettings');
+      const originalText = saveBtn.textContent;
+      
+      // Show saved confirmation
+      saveBtn.textContent = 'Settings Saved!';
+      saveBtn.style.backgroundColor = '#4CAF50';
+      
+      // Reset button after 2 seconds
+      setTimeout(() => {
+        saveBtn.textContent = originalText;
+        saveBtn.style.backgroundColor = '#2196F3';
+      }, 2000);
+    }
+  });
+});
+
+// Validate all input fields
+function validateInputs() {
+  // Validate account size
+  if (accountSizeInput.value < 1) {
+    alert('Account size must be at least 1 USD');
+    accountSizeInput.focus();
+    return false;
+  }
+  
+  // Validate risk per trade
+  if (riskPerTradeInput.value < 1) {
+    alert('Risk per trade must be at least 1 USD');
+    riskPerTradeInput.focus();
+    return false;
+  }
+  
+  // Validate lot size
+  if (lotSizePerTradeInput.value < 0.01) {
+    alert('Lot size must be at least 0.01');
+    lotSizePerTradeInput.focus();
+    return false;
+  }
+  
+  // Validate short MA period
+  if (shortMAPeriodInput.value < 1) {
+    alert('Short MA period must be at least 1');
+    shortMAPeriodInput.focus();
+    return false;
+  }
+  
+  // Validate long MA period
+  if (longMAPeriodInput.value < 1) {
+    alert('Long MA period must be at least 1');
+    longMAPeriodInput.focus();
+    return false;
+  }
+  
+  // Validate that short MA is less than long MA
+  if (parseInt(shortMAPeriodInput.value) >= parseInt(longMAPeriodInput.value)) {
+    alert('Short MA period must be less than Long MA period');
+    shortMAPeriodInput.focus();
+    return false;
+  }
+  
+  // Validate EMA period
+  if (emaPeriodInput.value < 1) {
+    alert('EMA period must be at least 1');
+    emaPeriodInput.focus();
+    return false;
+  }
+  
+  // Validate ATR length
+  if (atrLengthInput.value < 1) {
+    alert('ATR length must be at least 1');
+    atrLengthInput.focus();
+    return false;
+  }
+  
+  // Validate cooldown period
+  if (cooldownPeriodInput.value < 1) {
+    alert('Cooldown period must be at least 1 minute');
+    cooldownPeriodInput.focus();
+    return false;
+  }
+  
+  return true;
+}
+
+// Initialize popup when DOM is loaded
+document.addEventListener('DOMContentLoaded', initializePopup);
