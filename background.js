@@ -3,12 +3,38 @@
 let isEnabled = false;
 let isConnectedToMT5 = false;
 let serverUrl = "http://localhost:5555";
+let tradeStatistics = {
+  totalTrades: 0,
+  successfulTrades: 0,
+  failedTrades: 0,
+  profitLoss: 0,
+  winRate: 0,
+  tradingPairs: {}
+};
+
+// Function to start the Python server
+function startPythonServer() {
+  console.log("Attempting to start Python server...");
+  
+  // Use native messaging to start the Python process
+  chrome.runtime.sendNativeMessage('com.mt5.trade.trigger', { action: 'startServer' }, 
+    function(response) {
+      console.log("Server start response:", response);
+      if (response && response.success) {
+        console.log("Python server started successfully");
+        setTimeout(checkConnectionStatus, 2000); // Check connection after a delay
+      } else {
+        console.log("Failed to start Python server automatically");
+      }
+    }
+  );
+}
 
 // Listen for messages from the popup or content scripts
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "getState") {
     // Return the current state
-    sendResponse({ isEnabled, isConnectedToMT5 });
+    sendResponse({ isEnabled, isConnectedToMT5, tradeStatistics });
   } else if (message.action === "toggleEnabled") {
     // Toggle the enabled state
     isEnabled = message.value;
@@ -55,10 +81,60 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   } else if (message.action === "openPopup") {
     // Open the popup programmatically
     chrome.action.openPopup();
+  } else if (message.action === "updateTradeStatistics") {
+    // Update trade statistics
+    updateTradeStatistics(message.tradeResult);
+    sendResponse({ success: true });
+  } else if (message.action === "getTradeStatistics") {
+    // Return trade statistics
+    sendResponse({ statistics: tradeStatistics });
   }
   
   return true;
 });
+
+// Update trade statistics
+function updateTradeStatistics(tradeResult) {
+  tradeStatistics.totalTrades++;
+  
+  if (tradeResult.success) {
+    tradeStatistics.successfulTrades++;
+    tradeStatistics.profitLoss += tradeResult.profit || 0;
+  } else {
+    tradeStatistics.failedTrades++;
+    tradeStatistics.profitLoss += tradeResult.loss || 0;
+  }
+  
+  // Update win rate
+  tradeStatistics.winRate = (tradeStatistics.successfulTrades / tradeStatistics.totalTrades) * 100;
+  
+  // Update trading pair statistics
+  if (!tradeStatistics.tradingPairs[tradeResult.symbol]) {
+    tradeStatistics.tradingPairs[tradeResult.symbol] = {
+      totalTrades: 0,
+      successfulTrades: 0,
+      failedTrades: 0,
+      profitLoss: 0,
+      winRate: 0
+    };
+  }
+  
+  const pairStats = tradeStatistics.tradingPairs[tradeResult.symbol];
+  pairStats.totalTrades++;
+  
+  if (tradeResult.success) {
+    pairStats.successfulTrades++;
+    pairStats.profitLoss += tradeResult.profit || 0;
+  } else {
+    pairStats.failedTrades++;
+    pairStats.profitLoss += tradeResult.loss || 0;
+  }
+  
+  pairStats.winRate = (pairStats.successfulTrades / pairStats.totalTrades) * 100;
+  
+  // Save trade statistics to storage
+  chrome.storage.local.set({ tradeStatistics });
+}
 
 // Check MT5 connection status periodically
 function checkConnectionStatus() {
@@ -108,7 +184,7 @@ function checkConnectionStatus() {
 
 // Initialize state from storage when the extension loads
 chrome.runtime.onInstalled.addListener(() => {
-  chrome.storage.local.get(["isEnabled", "settings"], (result) => {
+  chrome.storage.local.get(["isEnabled", "settings", "tradeStatistics"], (result) => {
     isEnabled = result.isEnabled || false;
     
     // If settings don't exist, set default values
@@ -123,12 +199,23 @@ chrome.runtime.onInstalled.addListener(() => {
         atrLength: 14,
         cooldownPeriod: 10,
         enablePyramiding: false,
-        maxPyramidPositions: 3
+        maxPyramidPositions: 3,
+        tradingPairs: ["EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "NZDUSD"]
       };
       
       chrome.storage.local.set({ settings: defaultSettings });
     }
+    
+    // Initialize trade statistics if they don't exist
+    if (result.tradeStatistics) {
+      tradeStatistics = result.tradeStatistics;
+    } else {
+      chrome.storage.local.set({ tradeStatistics });
+    }
   });
+  
+  // Try to start the Python server
+  startPythonServer();
   
   // Start periodic connection checks
   setInterval(checkConnectionStatus, 5000);

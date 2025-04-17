@@ -1,3 +1,4 @@
+
 // Popup script for the extension
 
 // DOM elements
@@ -7,10 +8,19 @@ const saveSettingsBtn = document.getElementById('saveSettings');
 const connectionStatus = document.getElementById('connectionStatus');
 const connectionIcon = document.getElementById('connectionIcon');
 
+// Trade statistics elements
+const totalTradesElement = document.getElementById('totalTrades');
+const winRateElement = document.getElementById('winRate');
+const profitLossElement = document.getElementById('profitLoss');
+const successfulTradesElement = document.getElementById('successfulTrades');
+const failedTradesElement = document.getElementById('failedTrades');
+const pairStatsContainer = document.getElementById('pairStatsContainer');
+
 // Input elements
 const accountSizeInput = document.getElementById('accountSize');
 const riskPerTradeInput = document.getElementById('riskPerTrade');
 const lotSizePerTradeInput = document.getElementById('lotSizePerTrade');
+const tradingPairsInput = document.getElementById('tradingPairs');
 const shortMAPeriodInput = document.getElementById('shortMAPeriod');
 const longMAPeriodInput = document.getElementById('longMAPeriod');
 const emaPeriodInput = document.getElementById('emaPeriod');
@@ -25,7 +35,7 @@ const serverUrl = "http://localhost:5555";
 // Initialize popup with current state and settings
 function initializePopup() {
   // Get current state and settings from storage
-  chrome.storage.local.get(['isEnabled', 'settings'], (result) => {
+  chrome.storage.local.get(['isEnabled', 'settings', 'tradeStatistics'], (result) => {
     // Set enabled state
     if (result.isEnabled) {
       enabledSwitch.checked = true;
@@ -42,6 +52,13 @@ function initializePopup() {
       accountSizeInput.value = result.settings.accountSize;
       riskPerTradeInput.value = result.settings.riskPerTrade;
       lotSizePerTradeInput.value = result.settings.lotSizePerTrade;
+      
+      if (result.settings.tradingPairs) {
+        tradingPairsInput.value = Array.isArray(result.settings.tradingPairs) 
+          ? result.settings.tradingPairs.join(',') 
+          : result.settings.tradingPairs;
+      }
+      
       shortMAPeriodInput.value = result.settings.shortMAPeriod;
       longMAPeriodInput.value = result.settings.longMAPeriod;
       emaPeriodInput.value = result.settings.emaPeriod;
@@ -57,10 +74,69 @@ function initializePopup() {
         maxPyramidPositionsInput.value = result.settings.maxPyramidPositions;
       }
     }
+    
+    // Update trade statistics
+    if (result.tradeStatistics) {
+      updateStatisticsUI(result.tradeStatistics);
+    }
   });
   
   // Check MT5 connection status directly with the server
   checkConnectionStatus();
+}
+
+// Update statistics UI with the provided data
+function updateStatisticsUI(statistics) {
+  // Update main statistics
+  totalTradesElement.textContent = statistics.totalTrades;
+  winRateElement.textContent = statistics.winRate.toFixed(1) + '%';
+  
+  const profitLossValue = statistics.profitLoss.toFixed(2);
+  profitLossElement.textContent = '$' + Math.abs(profitLossValue);
+  profitLossElement.className = 'stat-value ' + (statistics.profitLoss >= 0 ? 'profit' : 'loss');
+  
+  successfulTradesElement.textContent = statistics.successfulTrades;
+  failedTradesElement.textContent = statistics.failedTrades;
+  
+  // Update pair statistics
+  if (Object.keys(statistics.tradingPairs).length > 0) {
+    pairStatsContainer.innerHTML = '';
+    
+    Object.entries(statistics.tradingPairs).forEach(([pair, stats]) => {
+      const pairItem = document.createElement('div');
+      pairItem.className = 'pair-stat-item';
+      
+      const pairName = document.createElement('div');
+      pairName.className = 'pair-name';
+      pairName.textContent = pair;
+      
+      const pairMetrics = document.createElement('div');
+      pairMetrics.className = 'pair-metrics';
+      
+      const winRateMetric = document.createElement('div');
+      winRateMetric.className = 'pair-metric';
+      winRateMetric.textContent = `WR: ${stats.winRate.toFixed(1)}%`;
+      
+      const plMetric = document.createElement('div');
+      plMetric.className = 'pair-metric ' + (stats.profitLoss >= 0 ? 'profit' : 'loss');
+      plMetric.textContent = `P/L: $${Math.abs(stats.profitLoss).toFixed(2)}`;
+      
+      const countMetric = document.createElement('div');
+      countMetric.className = 'pair-metric';
+      countMetric.textContent = `Count: ${stats.totalTrades}`;
+      
+      pairMetrics.appendChild(winRateMetric);
+      pairMetrics.appendChild(plMetric);
+      pairMetrics.appendChild(countMetric);
+      
+      pairItem.appendChild(pairName);
+      pairItem.appendChild(pairMetrics);
+      
+      pairStatsContainer.appendChild(pairItem);
+    });
+  } else {
+    pairStatsContainer.innerHTML = '<div class="no-data">No trading data available</div>';
+  }
 }
 
 // Check connection status with the MT5 server
@@ -73,7 +149,15 @@ function checkConnectionStatus() {
     .catch(error => {
       console.error("Error checking MT5 connection:", error);
       updateConnectionStatus(false);
+      
+      // If not connected, try to start the server
+      tryStartServer();
     });
+}
+
+// Try to start the Python server if not already running
+function tryStartServer() {
+  chrome.runtime.sendMessage({ action: 'startPythonServer' });
 }
 
 // Update connection status UI
@@ -112,6 +196,9 @@ function connectToMT5() {
       console.error("Error connecting to MT5:", error);
       showToast('Error connecting to MT5 server', 'error');
       updateConnectionStatus(false);
+      
+      // Try to start the server if connection fails
+      tryStartServer();
     });
 }
 
@@ -144,11 +231,18 @@ saveSettingsBtn.addEventListener('click', () => {
     return;
   }
   
+  // Parse trading pairs from the input
+  const tradingPairsArray = tradingPairsInput.value
+    .split(',')
+    .map(pair => pair.trim().toUpperCase())
+    .filter(pair => pair.length > 0);
+  
   // Create settings object from inputs
   const settings = {
     accountSize: parseInt(accountSizeInput.value),
     riskPerTrade: parseInt(riskPerTradeInput.value),
     lotSizePerTrade: parseFloat(lotSizePerTradeInput.value),
+    tradingPairs: tradingPairsArray,
     shortMAPeriod: parseInt(shortMAPeriodInput.value),
     longMAPeriod: parseInt(longMAPeriodInput.value),
     emaPeriod: parseInt(emaPeriodInput.value),
@@ -200,6 +294,13 @@ function validateInputs() {
   if (lotSizePerTradeInput.value < 0.01) {
     showError('Lot size must be at least 0.01');
     lotSizePerTradeInput.focus();
+    return false;
+  }
+  
+  // Validate trading pairs
+  if (!tradingPairsInput.value.trim()) {
+    showError('At least one trading pair must be specified');
+    tradingPairsInput.focus();
     return false;
   }
   
@@ -291,10 +392,21 @@ connectionStatusDiv.appendChild(connectBtn);
 // Initialize popup when DOM is loaded
 document.addEventListener('DOMContentLoaded', initializePopup);
 
+// Refresh statistics periodically
+setInterval(() => {
+  chrome.runtime.sendMessage({ action: 'getTradeStatistics' }, (response) => {
+    if (response && response.statistics) {
+      updateStatisticsUI(response.statistics);
+    }
+  });
+}, 5000);
+
 // Listen for messages from the background script
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "connectionStatusChanged") {
     updateConnectionStatus(message.isConnected);
+  } else if (message.action === "statisticsUpdated") {
+    updateStatisticsUI(message.statistics);
   }
   
   return true;

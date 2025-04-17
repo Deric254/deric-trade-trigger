@@ -2,9 +2,9 @@
 {
   "manifest_version": 3,
   "name": "Deric MT5 Trade Trigger",
-  "version": "1.0",
+  "version": "1.1",
   "description": "Triggers trades in MT5 based on SMA/EMA crossover strategy",
-  "permissions": ["storage", "activeTab", "scripting"],
+  "permissions": ["storage", "activeTab", "scripting", "nativeMessaging"],
   "host_permissions": ["*://*.metatrader5.com/*", "*://*.metaquotes.net/*", "*://*.mql5.com/*"],
   "action": {
     "default_popup": "popup.html",
